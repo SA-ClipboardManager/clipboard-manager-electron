@@ -2,7 +2,8 @@
 import { app, BrowserWindow } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
-import AppContainer from "./AppContainer.js";
+import {ipcMain} from "electron";
+import AppContainer from "./core/AppContainer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -11,7 +12,7 @@ let mainWindow = null;
 async function createWindow() {
   // 모듈 초기화
   AppContainer.initializeModules();
-  AppContainer.registerIpcHandlers();
+  AppContainer.registerIpcHandlers(ipcMain);
 
   mainWindow = new BrowserWindow({
     width: 1200,
