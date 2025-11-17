@@ -151,6 +151,26 @@ class ILocalRepository {
   updateThumbnailPath(dataId, thumbnailPath) {
     throw new Error("Method must be implemented");
   }
+
+  /**
+   * 클립보드 항목을 클라우드 동기화 대상으로 지정 (is_cloud_item = 1 업데이트).
+   * @param {string} clipId - 클립보드 항목 ID.
+   * @returns {Promise<boolean>} 업데이트 성공 여부.
+   */
+  async markItemAsCloudItem(clipId) {
+    throw new Error("Method must be implemented");
+  }
+
+  /**
+   * Outbox (pending_sync 테이블)에 새로운 동기화 이벤트를 기록
+   * 이는 사용자의 명시적 클라우드 저장 요청을 서버에 알리기 위해 사용
+   * @param {string} dataId - 클립보드 항목 ID.
+   * @param {string} operation - 수행할 작업 ('INSERT', 'DELETE', 등).
+   * @returns {Promise<void>}
+   */
+  async enqueueCloudSyncEvent(dataId, operation) {
+    throw new Error("Method must be implemented");
+  }
 }
 
 module.exports = {

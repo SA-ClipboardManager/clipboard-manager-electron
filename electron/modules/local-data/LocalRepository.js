@@ -4,7 +4,7 @@ const path = require("path");
 const { app } = require("electron");
 const Database = require("better-sqlite3");
 const fs = require("fs-extra");
-const { ILocalRepository } = require("../core/clipboard.interface");
+const { ILocalRepository } = require("../interfaces/clipboard.interface");
 const CCDError = require("../shared/errors/CCDError");
 
 /**
@@ -56,6 +56,7 @@ class LocalRepository extends ILocalRepository {
             format TEXT NOT NULL,
             content TEXT NOT NULL,
             is_synced INTEGER NOT NULL DEFAULT 0, 
+            is_cloud_item INTEGER NOT NULL DEFAULT 0, 
             created_at INTEGER NOT NULL,
             CONSTRAINT clipboard_pk PRIMARY KEY (id),
             check(type IN ('img', 'txt'))
@@ -647,6 +648,99 @@ class LocalRepository extends ILocalRepository {
         module: "LocalRepository",
         context: "썸네일 경로 업데이트 실패",
         message: error.message || error,
+      });
+    }
+  }
+  /**
+   * 클립보드 항목을 클라우드 동기화 대상으로 지정하고 Outbox에 이벤트를 기록합니다.
+   * 이 두 작업은 단일 트랜잭션으로 처리되어 데이터 무결성을 보장합니다.
+   * @inheritdoc
+   */
+  async markItemAsCloudItem(clipId) {
+    if (!this.db) {
+      throw CCDError.create("E610", {
+        module: "LocalRepository",
+        context: "DB 초기화 상태 오류",
+        message: "Database not initialized.",
+      });
+    }
+
+    try {
+      // 트랜잭션으로 묶어 두 작업을 원자적으로 처리합니다.
+      const tx = this.db.transaction(() => {
+        const now = Math.floor(Date.now() / 1000);
+
+        // 1. clipboard 테이블의 상태 업데이트: is_cloud_item = 1, is_synced = 0
+        const updateStmt = this.db.prepare(`
+                    UPDATE clipboard 
+                    SET is_cloud_item = 1, is_synced = 0
+                    WHERE id = ? AND is_cloud_item = 0
+                `);
+        const result = updateStmt.run(clipId);
+
+        // 실제로 항목이 업데이트되었는지 확인
+        if (result.changes === 0) {
+          // 항목이 없거나 이미 클라우드 항목일 경우 성공으로 간주
+          return true;
+        }
+
+        // 2. Outbox (pending_sync)에 INSERT 이벤트 기록
+        // 이 이벤트는 CloudService에게 이 클립 데이터를 서버로 전송하라고 지시합니다.
+        const enqueueStmt = this.db.prepare(`
+                    INSERT INTO pending_sync (op, data_id, op_args, created_at, retry_count, next_attempt_at)
+                    VALUES (?, ?, ?, ?, 0, 0)
+                `);
+
+        // 클립보드 데이터 자체를 페이로드에 포함하는 대신,
+        // CloudService가 data_id를 사용해 데이터를 조회하도록 'INSERT' 오퍼레이션만 기록합니다.
+        enqueueStmt.run(
+          "INSERT",
+          clipId,
+          JSON.stringify({}), // 추가 인수는 현재 없음
+          now
+        );
+      });
+
+      tx(); // 트랜잭션 실행
+      return true;
+    } catch (error) {
+      console.error("markItemAsCloudItem transaction failed:", error);
+      throw CCDError.create("E610", {
+        module: "LocalRepository",
+        context: "클라우드 동기화 지정 실패",
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Outbox (pending_sync 테이블)에 새로운 동기화 이벤트를 기록합니다.
+   * 이 메서드는 주로 내부 헬퍼 또는 saveClipboardItem에서 Outbox 기록을 분리할 때 사용됩니다.
+   * @inheritdoc
+   */
+  async enqueueCloudSyncEvent(dataId, operation) {
+    if (!this.db) {
+      throw CCDError.create("E610", {
+        /* ... */
+      });
+    }
+
+    try {
+      const now = Math.floor(Date.now() / 1000);
+
+      const enqueueStmt = this.db.prepare(`
+                INSERT INTO pending_sync (op, data_id, op_args, created_at, retry_count, next_attempt_at)
+                VALUES (?, ?, ?, ?, 0, 0)
+            `);
+
+      // 주의: 이 메서드는 data_id와 operation만 받으므로, op_args는 비워둡니다.
+      // 복잡한 인수가 필요하면 상위 모듈에서 JSON 형태로 준비해야 합니다.
+      enqueueStmt.run(operation, dataId, JSON.stringify({}), now);
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "LocalRepository",
+        context: "Outbox 이벤트 기록 실패",
+        message: error.message,
       });
     }
   }
