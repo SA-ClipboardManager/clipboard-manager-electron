@@ -1,0 +1,33 @@
+.mainview-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  width: 100%;
+  overflow-y: hidden;
+}
+
+.mainview-container.scrollable {
+  max-height: calc(100vh - 22.9rem);
+  overflow-y: auto;
+}
+
+.mainview-item {
+  width: 100%;
+  position: relative;
+}
+
+/* 커스텀 스크롤바 (optional) */
+.mainview-container.scrollable::-webkit-scrollbar {
+  width: 7px;
+}
+
+.mainview-container.scrollable::-webkit-scrollbar-track {
+  background: #c6d2df;
+  border-radius: 20px;
+}
+
+.mainview-container.scrollable::-webkit-scrollbar-thumb {
+  background-color: #185eaf;
+  border-radius: 20px;
+}
