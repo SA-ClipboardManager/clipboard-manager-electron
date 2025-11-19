@@ -9,6 +9,7 @@ const CCDError = require("../shared/errors/CCDError");
 let intervalId = null;
 let isProcessingImage = false;
 let lastImageHash = null;
+let lastText = null;
 
 let skipCopyContent = new Set();
 let skipContentType = null;
@@ -47,17 +48,20 @@ function start() {
       const now = Date.now();
       const text = clipboard.readText();
 
-      // Text 감지
-      if (text && text !== undefined) {
-        // skip
+      if (text && text.trim() !== "") {
+        if (text === lastText) {
+          return;
+        }
+      } else {
         if (
           skipContentType === "text" &&
           skipContentType.has(text) &&
           now - skipTimestamp < 3000
         ) {
+          lastText = text;
           return;
         }
-
+        lastText = text;
         const id = uuidv4();
 
         const payload = {
