@@ -52,10 +52,9 @@ function start() {
         if (text === lastText) {
           return;
         }
-      } else {
         if (
           skipContentType === "text" &&
-          skipContentType.has(text) &&
+          skipCopyContent.has(text) &&
           now - skipTimestamp < 3000
         ) {
           lastText = text;

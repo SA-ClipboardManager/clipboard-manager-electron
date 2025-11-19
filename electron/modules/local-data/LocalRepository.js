@@ -193,28 +193,6 @@ class LocalRepository extends ILocalRepository {
             data_id: item.id,
           });
       }
-
-      // 3. pending_sync 테이블에 동기화 이벤트 기록 (Outbox Pattern)
-      const opArgs = {
-        type: item.type,
-        format: item.format,
-        content: item.content,
-        meta: meta,
-      };
-
-      this.db
-        .prepare(
-          `
-                INSERT INTO pending_sync (op, data_id, op_args, created_at)
-                VALUES (?, ?, ?, ?)
-            `
-        )
-        .run(
-          "INSERT", // Operation: 새 클립 데이터 삽입
-          item.id,
-          JSON.stringify(opArgs),
-          now
-        );
     });
 
     try {

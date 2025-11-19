@@ -77,11 +77,12 @@ class ImageProcessor {
    */
   async generateThumbnail(originalPath) {
     try {
-      const dir = path.dirname(originalPath);
+      const originalDir = path.dirname(originalPath);
+      const ccdRoot = path.dirname(originalDir);
       const ext = path.extname(originalPath);
       const name = path.basename(originalPath, ext);
 
-      const thumbnailDir = path.join(dir, "thumbnails");
+      const thumbnailDir = path.join(ccdRoot, "thumbnails");
       await fs.ensureDir(thumbnailDir);
 
       const thumbnailPath = path.join(thumbnailDir, `thumb_${name}.png`);

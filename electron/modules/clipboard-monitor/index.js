@@ -38,10 +38,10 @@ function startMonitoring() {
         meta = {
           data_id: payload.id,
           file_path: payload.imageMeta.file_path,
-          width: null,
-          height: null,
-          file_size: null,
-          thumbnail_path: null,
+          width: payload.imageMeta.width,
+          height: payload.imageMeta.height,
+          file_size: payload.imageMeta.file_size,
+          thumbnail_path: payload.imageMeta.thumbnailPath,
         };
       }
       const success = await LocalRepository.saveClipboardItem(itemToSave, meta);
