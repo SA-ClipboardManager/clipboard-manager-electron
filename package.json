@@ -4,7 +4,7 @@
   "description": "",
   "license": "MIT",
   "author": "",
-  "type": "module",
+  "type": "commonjs",
   "main": "electron/main/main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -14,10 +14,25 @@
     "postinstall": "npm run rebuild"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
+    "@tailwindcss/postcss": "^4.1.17",
     "@vitejs/plugin-react": "^5.1.0",
-    "electron": "^39.1.1",
+    "autoprefixer": "^10.4.22",
+    "electron": "^33.4.11",
     "electron-builder": "^26.0.12",
     "electron-rebuild": "^3.2.9",
-    "electron-vite": "^4.0.1"
+    "electron-vite": "^4.0.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.17"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "better-sqlite3": "^12.4.1",
+    "prop-types": "^15.8.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "sharp": "^0.34.5",
+    "uuid": "^9.0.1",
+    "ws": "^8.18.3"
   }
 }
