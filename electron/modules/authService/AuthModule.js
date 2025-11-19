@@ -4,13 +4,13 @@ class AuthModule extends BaseModule {
 
     constructor(app) {
         super(app, "auth");
-        this.service = app.modules.AuthService;
+        this.service = app.service.AuthService;
     }
 
     registerIpcHandler(ipcMain) {
         ipcMain.handle("user-login", async (_, {userId, password}) => {
             try {
-                const {loginResult, access_token, refresh_token} = await authenticate(
+                const {loginResult, access_token, refresh_token} = await this.service.login(
                     userId,
                     password
                 );
@@ -35,8 +35,7 @@ class AuthModule extends BaseModule {
         ipcMain.handle("user-logout", async () => {
             try {
                 // isLogin = false;
-                await dataRepo.logoutAndCleanupCloudData();
-                dataRepo.cloudDB.logout();
+                await this.service.logout();
 
                 return {success: true, message: "로그아웃 완료"};
             } catch (err) {

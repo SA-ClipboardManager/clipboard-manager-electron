@@ -6,7 +6,7 @@ const {pasteById} = require ("./paste")
 class EtcModule extends BaseModule{
     constructor(app) {
         super(app, "etc");
-        this.service = app.modules.etcService;
+        this.service = app.service.EtcService;
     }
 
     registerIpcHandler(ipcMain) {

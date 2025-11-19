@@ -4,7 +4,7 @@ class CloudModule extends BaseModule{
 
     constructor(app) {
         super(app, "cloud");
-        this.service = app.modules.CloudService;
+        this.service = app.services.CloudService;
     }
 
     registerIpcHandler(ipcMain) {
