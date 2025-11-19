@@ -1,0 +1,33 @@
+.context-menu {
+  position: absolute;
+  top: 2rem;
+  right: 2.2rem;
+  width: 11rem;
+  height: auto;
+  padding: 0 1.2rem;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 1rem; /* rounded-2xl */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* shadow-md */
+  z-index: 50;
+  color: var(--blue-200);
+  text-align: center;
+  font-size: 1.1rem;
+  font-family: var(--font-md, sans-serif);
+}
+
+.context-menu-item {
+  padding: 0.5rem 0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.context-menu-item:hover {
+  background-color: #eff6ff; /* Tailwind bg-blue-50 */
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #e5e7eb; /* Tailwind gray-200 */
+  margin: 0.2rem 0;
+}

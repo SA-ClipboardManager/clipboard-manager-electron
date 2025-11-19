@@ -7,7 +7,7 @@ let mainWindow = null;
 async function createWindow() {
   // 모듈 초기화
   AppContainer.initializeModules();
-  AppContainer.registerIpcHandlers();
+  AppContainer.registerIpcHandlers(ipcMain);
 
   mainWindow = new BrowserWindow({
     width: 1200,
