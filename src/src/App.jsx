@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import reactLogo from './assets/react.svg';
+import viteLogo from '/vite.svg';
 import './App.css';
-import './styles/color.css';
-import './styles/typography.css';
 
-import CloseIcon from './assets/X.svg';
+function App() {
+  const [count, setCount] = useState(0);
 
 import MainView from './features/MainView/MainView';
 
@@ -26,84 +27,40 @@ const App = () => {
 
   return (
     <>
-      <div className="container">
-        <div className="top-bar">
-          {/* 손잡이 */}
-          <div className="handle"></div>
-
-          {/* 닫기 버튼 */}
-          <div className="close-button">
-            <img
-              src={CloseIcon}
-              alt="닫기 버튼"
-              onClick={() => window.electronAPI.closeWindow()} // TODO
-            />
-          </div>
-
-          <div className="content">
-            {/* TODO: 검색창 */}
-            {/* <div>
-              <SearchBar
-                setItemsFromSearchResult={setItemsFromSearchResult}
-                refetch={refetch}
-                loginInfo={loginInfo}
-                setLoginInfo={setLoginInfo}
-              />
-            </div> */}
-
-            {/* TODO: 태그, 필터 */}
-            {/*
-            <div>
-              <FilterBar
-                isTagChecked={isTagChecked}
-                setIsTagChecked={setIsTagChecked}
-                sinceInput={sinceInput}
-                setSinceInput={setSinceInput}
-                untilInput={untilInput}
-                setUntilInput={setUntilInput}
-                locationInput={locationInput}
-                setLocationInput={setLocationInput}
-                setLocationFilter={setLocationFilter}
-                onApplyFilters={() => {
-                  setSinceFilter(sinceInput);
-                  setUntilFilter(untilInput);
-                  setLocationFilter(locationInput);
-                }}
-                fileType={fileType}
-                setFileType={setFileType}
-              />
-            </div>
-            */}
-
-            {/* TODO: 기록보기 */}
-            <div>
-              <MainView
-                isTagChecked={isTagChecked}
-                items={filteredItems}
-                refetch={refetch}
-                addItem={addItem}
-                toggleSelect={toggleSelect}
-                fileType={fileType}
-                setFileType={setFileType}
-              />
-            </div>
-          </div>
-
-          {/* TODO: 하단 */}
-          {/*
-          <div className="bottom-bar">
-            <BottomBar
-              getSelectedItemIds={getSelectedItemIds}
-              refetch={refetch}
-              setItems={setItems}
-              loginInfo={loginInfo}
-            />
-          </div>
-          */}
-        </div>
+      <div>
+        <a
+          href="https://vite.dev"
+          target="_blank"
+        >
+          <img
+            src={viteLogo}
+            className="logo"
+            alt="Vite logo"
+          />
+        </a>
+        <a
+          href="https://react.dev"
+          target="_blank"
+        >
+          <img
+            src={reactLogo}
+            className="logo react"
+            alt="React logo"
+          />
+        </a>
       </div>
+      <h1>Vite + React</h1>
+      <div className="card">
+        <button onClick={() => setCount((count) => count + 1)}>count is {count}</button>
+        <p>
+          Edit <code>src/App.jsx</code> and save to test HMR
+        </p>
+      </div>
+      <p className="read-the-docs">Click on the Vite and React logos to learn more</p>
+
+      <div className="text-3xl font-bold text-red-500">Tailwind OK!</div>
     </>
   );
-};
+}
 
 export default App;
