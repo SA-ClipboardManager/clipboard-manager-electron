@@ -1,9 +1,10 @@
-export class IpcRoute {
+class IpcRoute {
     constructor(prefix ="") {
         this.prefix = prefix;
     }
 
     build(eventName){
-        return `${this.prefix}:${eventName}`;
+        return `${this.prefix}-${eventName}`;
     }
 }
+module.exports = IpcRoute;
