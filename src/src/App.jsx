@@ -1,32 +1,20 @@
 import './App.css';
 import './index.css';
 import React, { useState, useEffect } from 'react';
-import clsx from 'clsx';
-import { twMerge } from 'tailwind-merge';
-import { colors, colorVariants } from './styles/color.ts';
-import { typographyVariants } from './styles/typography.ts';
+import './styles/color.css';
+import './styles/typography.css';
 
 import BottomBar from './feature/Bottom/BottomBar';
 import SearchBar from './feature/Search/SearchBar';
 import FilterBar from './feature/Filter/FilterBar';
 import MainView from './feature/MainView/MainView';
-import './App.css';
-import './index.css';
-import './styles/color.css';
-import './styles/typography.css';
-import useClipboardRecords from './utils/useClipboardRecords.js';
-// import useDisableDuringSubmit from "../../utils/useDisableDuringSubmit";
+import { useClipboard } from './providers/ClipboardProvider';
+import { closeWindow } from './utils/electronService';
 
-//typo, color util 예시 (복붙해서 쓰기)
-// {`${colorVariants({ bg: 'gray-50' })}`}
-//  {`${typographyVariants({ variant: 'h1-sb' })} `}
-
-//전체
 const App = () => {
   const [loginInfo, setLoginInfo] = useState({ isLoggedIn: false, userId: null });
-
   const [isTagChecked, setIsTagChecked] = useState(true);
-  const { items, refetch, toggleSelect, addItem, setItemsFromSearchResult, getSelectedItemIds, setItems } = useClipboardRecords();
+  const { items, refetch, toggleSelect, addItem, setItemsFromSearchResult, getSelectedItemIds, setItems } = useClipboard();
   const [sinceRaw, setSinceRaw] = useState('');
   const [untilRaw, setUntilRaw] = useState('');
   const [fileType, setFileType] = useState('all');
@@ -40,8 +28,8 @@ const App = () => {
   const [sinceFilter, setSinceFilter] = useState('');
   const [untilFilter, setUntilFilter] = useState('');
   const [filteredItems, setFilteredItems] = useState([]);
-
   const [locationFilter, setLocationFilter] = useState('All');
+
   useEffect(() => {
     if (!Array.isArray(items)) return;
 
@@ -64,10 +52,6 @@ const App = () => {
     setFilteredItems(filtered);
   }, [items, sinceFilter, untilFilter, locationFilter]);
 
-  // useEffect(() => {
-  //   console.log("🧪 electronAPI:", window.electronAPI);
-  // }, []);
-
   return (
     <>
       <div
@@ -84,7 +68,7 @@ const App = () => {
               src="X.svg"
               alt="닫기 버튼 "
               style={{ WebkitAppRegion: 'no-drag' }}
-              onClick={() => window.electronAPI.closeWindow()}
+              onClick={() => closeWindow()}
             />
           </div>
         </div>

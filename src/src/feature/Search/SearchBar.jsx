@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import clsx from 'clsx';
-import { twMerge } from 'tailwind-merge';
 import '../../styles/color.css';
-import useClipboardRecords from '../../utils/useClipboardRecords';
-import useDisableDuringSubmit from '../../utils/useDisableDuringSubmit';
 
+import useDisableDuringSubmit from '../../utils/useDisableDuringSubmit';
 import LoginModal from '../Login/LoginModal';
+import { searchKeyword } from '../../utils/electronService';
 
 const SearchBar = ({ setItemsFromSearchResult, refetch, loginInfo, setLoginInfo }) => {
   const options = ['일반 검색', '고급 검색'];
@@ -26,7 +25,7 @@ const SearchBar = ({ setItemsFromSearchResult, refetch, loginInfo, setLoginInfo 
 
   const handleSearch = async () => {
     const model = currentSelection === '일반 검색' ? 'mobilenet' : 'clip';
-    const result = await window.electronAPI.searchKeyword(keyword, model);
+    const result = await searchKeyword(keyword, model);
     console.log('this is Search model: ', model);
     if (result.success) {
       console.log('이건 senddata 원본~', result);
