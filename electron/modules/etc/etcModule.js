@@ -1,6 +1,5 @@
 const BaseModule = require("../../main/core/BaseModule");
 const CCDError = require("../shared/errors/CCDError");
-const {pasteById} = require ("./paste")
 
 //TODO name 수정
 class EtcModule extends BaseModule{
@@ -28,7 +27,7 @@ class EtcModule extends BaseModule{
 
         ipcMain.handle("paste-item",async (_, { itemId }) => {
     try {
-      await pasteById(itemId); // ← 핵심 연결
+      await this.service.pasteItem(itemId); // ← 핵심 연결
       return { paste: true };
     } catch (err) {
       const error =
