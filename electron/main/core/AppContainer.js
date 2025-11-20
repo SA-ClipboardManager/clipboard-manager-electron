@@ -41,4 +41,4 @@ class AppContainer {
   }
 }
 
-export default AppContainer;
+module.exports = AppContainer;

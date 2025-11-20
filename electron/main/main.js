@@ -1,12 +1,7 @@
 // electron/main/main.js
-import { app, BrowserWindow } from "electron";
-import path from "path";
-import { fileURLToPath } from "url";
-import {ipcMain} from "electron";
-import AppContainer from "./core/AppContainer.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
+const { app, BrowserWindow, ipcMain } = require("electron");
+const path = require("path");
+const AppContainer = require("./core/AppContainer");
 let mainWindow = null;
 
 async function createWindow() {

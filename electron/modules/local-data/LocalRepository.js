@@ -4,7 +4,7 @@ const path = require("path");
 const { app } = require("electron");
 const Database = require("better-sqlite3");
 const fs = require("fs-extra");
-const { ILocalRepository } = require("../interfaces/clipboard.interface");
+const { ILocalRepository } = require("../interfaces/ILocalRepository");
 const CCDError = require("../shared/errors/CCDError");
 
 /**
@@ -20,7 +20,6 @@ class LocalRepository extends ILocalRepository {
     this.txUpdateTagId = null;
 
     this._initialize();
-    this.initializeCleanup();
   }
 
   _initialize() {
@@ -83,7 +82,7 @@ class LocalRepository extends ILocalRepository {
             tag_id TEXT NOT NULL,
             CONSTRAINT data_tag_pk PRIMARY KEY (data_id,tag_id),
             CONSTRAINT data_tag_clipboard_FK_1 FOREIGN KEY (data_id) REFERENCES clipboard(id) ON DELETE CASCADE,
-            CONSTRAINT data_tag_tag_FK_1 FOREIGN KEY (local_tag_id) REFERENCES tag(local_id) ON DELETE CASCADE ON UPDATE CASCADE
+            CONSTRAINT data_tag_tag_FK_1 FOREIGN KEY (tag_id) REFERENCES tag(local_id) ON DELETE CASCADE ON UPDATE CASCADE
           );
 
           CREATE TABLE IF NOT EXISTS pending_sync (
@@ -194,28 +193,6 @@ class LocalRepository extends ILocalRepository {
             data_id: item.id,
           });
       }
-
-      // 3. pending_sync 테이블에 동기화 이벤트 기록 (Outbox Pattern)
-      const opArgs = {
-        type: item.type,
-        format: item.format,
-        content: item.content,
-        meta: meta,
-      };
-
-      this.db
-        .prepare(
-          `
-                INSERT INTO pending_sync (op, data_id, op_args, created_at)
-                VALUES (?, ?, ?, ?)
-            `
-        )
-        .run(
-          "INSERT", // Operation: 새 클립 데이터 삽입
-          item.id,
-          JSON.stringify(opArgs),
-          now
-        );
     });
 
     try {

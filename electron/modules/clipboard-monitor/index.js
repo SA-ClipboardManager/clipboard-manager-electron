@@ -1,23 +1,15 @@
 // ccd-main/features/clipboard/index.js
 // 클립보드 모듈 초기화 + event routing 역할만 맡음
 
-const { app, ipcMain, globalShortcut, BrowserWindow } = require("electron");
 const monitor = require("./monitor");
 const CCDError = require("../shared/errors/CCDError");
 const { LocalRepository } = require("../local-data/LocalRepository");
-const localRepo = LocalRepository;
-const {
-  getCloudUploadEnabled,
-  toggleCloudUploadEnabled,
-} = require("../cloudUploadState");
 
 /**
  * 클립보드 모듈 초기화
  */
 function initClipboardModule() {
-  setupToggleShortcut();
   startMonitoring();
-  notifyRenderer("clipboard-upload-status", getCloudUploadEnabled());
 }
 
 /**
@@ -33,32 +25,26 @@ function startMonitoring() {
       // monitor는 "txt", "img" 형태로 넘기므로 그대로 사용
       const createdAtSeconds = Math.floor(payload.created_at / 1000);
 
-      const savedItem = await repo.saveItem(payload, saveMode);
-
-      // id는 DB에서 다시 발급될 수 있으므로 갱신
-      payload.id = savedItem?.id ?? payload.id;
-
       const itemToSave = {
         id: payload.id,
-        type: payload.type,
-        format: payload.format,
-        content: payload.content,
+        type: payload.type, // 'txt' | 'img'
+        format: payload.format, // 'text/plain' | 'png'
+        content: payload.content, // 텍스트 내용 또는 이미지 파일 경로
         created_at: createdAtSeconds,
-        is_synced: 0, // 새 항목이므로 동기화되지 않음
+        is_synced: 0, // 초기 저장 시 미동기화 상태
       };
-
-      const success = await localRepo.saveClipboardItem(itemToSave, imageMeta);
-
-      if (!success) {
-        throw new Error("Local repository save failed.");
+      let meta = null;
+      if (payload.type === "img" && payload.imageMeta) {
+        meta = {
+          data_id: payload.id,
+          file_path: payload.imageMeta.file_path,
+          width: payload.imageMeta.width,
+          height: payload.imageMeta.height,
+          file_size: payload.imageMeta.file_size,
+          thumbnail_path: payload.imageMeta.thumbnailPath,
+        };
       }
-      notifyRenderer("clipboard-new-item", {
-        id: payload.id,
-        type: payload.type,
-        created_at: createdAtSeconds,
-        content: payload.content,
-        format: payload.format,
-      });
+      const success = await LocalRepository.saveClipboardItem(itemToSave, meta);
     } catch (err) {
       const error = CCDError.create("E630", {
         module: "index",

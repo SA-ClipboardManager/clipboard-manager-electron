@@ -13,6 +13,39 @@ class ImageProcessor {
   constructor() {
     this.THUMBNAIL_SIZE = 200; // 썸네일 최대 크기
   }
+  /**
+   * 클립보드 이미지 버퍼를 파일로 저장하고 메타데이터를 반환합니다.
+   * @param {Buffer} imageBuffer - Electron NativeImage에서 변환된 PNG 버퍼
+   * @param {string} saveDir - 저장할 디렉토리 경로
+   * @param {string} fileName - 데이터 UUID
+   * @returns {Promise<object>} { filePath, width, height, file_size }
+   */
+  async saveClipboardImage(imageBuffer, saveDir, fileName) {
+    try {
+      await fs.ensureDir(saveDir);
+
+      const filePath = path.join(saveDir, `${fileName}.png`);
+
+      const info = await sharp(imageBuffer).png().toFile(filePath);
+
+      const thumbnailPath = await this.generateThumbnail(filePath);
+
+      return {
+        file_path: filePath,
+        width: info.width,
+        height: info.height,
+        file_size: info.size,
+        thumbnailPath: thumbnailPath,
+      };
+    } catch (error) {
+      throw CCDError.create("E710", {
+        module: "ImageProcessor",
+        context: "이미지 저장 실패",
+        message: `파일명: ${fileName}`,
+        cause: error.message,
+      });
+    }
+  }
 
   /**
    * 지정된 경로의 파일을 삭제
@@ -38,23 +71,29 @@ class ImageProcessor {
   }
 
   /**
-   * 원본 이미지 경로를 기반으로 썸네일을 생성하고, 생성된 경로를 반환합니다.
-   * @param {string} imagePath - 원본 이미지 파일 경로.
+   * 원본 이미지 경로를 originalPath 썸네일을 생성하고, 생성된 경로를 반환합니다.
+   * @param {string} originalPath - 원본 이미지 파일 경로.
    * @returns {Promise<string>} 생성된 썸네일 파일 경로.
    */
-  async generateThumbnail(imagePath) {
-    const ext = path.extname(imagePath);
-
-    // 썸네일 경로: 원본 경로/thumb_[파일명].png
-    const thumbnailPath = path.join(
-      path.dirname(imagePath),
-      `thumb_${path.basename(imagePath, ext)}.png`
-    );
-
+  async generateThumbnail(originalPath) {
     try {
-      await sharp(imagePath)
-        .resize(this.THUMBNAIL_SIZE, this.THUMBNAIL_SIZE, { fit: "inside" })
-        .toFormat("png") // 썸네일은 PNG로 통일
+      const originalDir = path.dirname(originalPath);
+      const ccdRoot = path.dirname(originalDir);
+      const ext = path.extname(originalPath);
+      const name = path.basename(originalPath, ext);
+
+      const thumbnailDir = path.join(ccdRoot, "thumbnails");
+      await fs.ensureDir(thumbnailDir);
+
+      const thumbnailPath = path.join(thumbnailDir, `thumb_${name}.png`);
+
+      await sharp(originalPath)
+        .resize({
+          width: this.THUMBNAIL_SIZE,
+          height: this.THUMBNAIL_SIZE,
+          fit: "inside",
+        })
+        .png({ quality: 80 })
         .toFile(thumbnailPath);
 
       return thumbnailPath;

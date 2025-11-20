@@ -1,21 +1,15 @@
 const { EventEmitter } = require("events");
+const ImageProcessor = require("../fileUtility/imageProcessor");
 const { clipboard, app } = require("electron");
 const { v4: uuidv4 } = require("uuid");
 const path = require("path");
-const fs = require("fs-extra");
 const crypto = require("crypto");
-const CCDError = require("../CCDError"); // TODO: file path 변경
-const { type } = require("os");
-
-// TODO: path 변경
-// documents/CCD 내부에 이미지 저장
-// const documentsDir = app.getPath('documents');
-// const imageDir = path.join(documentsDir, 'CCD', 'original');
-// fs.ensureDirSync(imageDir);
+const CCDError = require("../shared/errors/CCDError");
 
 let intervalId = null;
 let isProcessingImage = false;
 let lastImageHash = null;
+let lastText = null;
 
 let skipCopyContent = new Set();
 let skipContentType = null;
@@ -26,12 +20,12 @@ let recentImageTimestamps = new Map();
 
 // imageDir 초기화는 app ready 이후에 수행하도록 변경
 let imageDir = null;
+const imageProcessor = new ImageProcessor();
 async function ensureImageDir() {
   try {
     await app.whenReady();
     const documentsDir = app.getPath("documents");
     imageDir = path.join(documentsDir, "CCD", "original");
-    fs.ensureDirSync(imageDir);
     console.log("[monitor] imageDir:", imageDir);
   } catch (err) {
     console.error("[monitor] ensureImageDir error", err);
@@ -44,23 +38,9 @@ function getImageHash(nativeImage) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
-async function saveImageToDiskAsync(nativeImage, id) {
-  try {
-    const filePath = path.join(imageDir, `${id}.png`);
-    const buffer = nativeImage.toPNG();
-    await fs.writeFile(filePath, buffer);
-
-    return filePath;
-  } catch (err) {
-    // TODO: Error
-    console.error(err);
-    throw err;
-  }
-}
-
 function start() {
   if (intervalId) return null;
-
+  ensureImageDir();
   const emitter = new EventEmitter();
 
   intervalId = setInterval(async () => {
@@ -68,17 +48,19 @@ function start() {
       const now = Date.now();
       const text = clipboard.readText();
 
-      // Text 감지
-      if (text && text !== undefined) {
-        // skip
-        if (
-          skipContentType === "text" &&
-          skipContentType.has(text) &&
-          now - skipTimestamp < 3000
-        ) {
+      if (text && text.trim() !== "") {
+        if (text === lastText) {
           return;
         }
-
+        if (
+          skipContentType === "text" &&
+          skipCopyContent.has(text) &&
+          now - skipTimestamp < 3000
+        ) {
+          lastText = text;
+          return;
+        }
+        lastText = text;
         const id = uuidv4();
 
         const payload = {
@@ -129,24 +111,38 @@ function start() {
         lastImageHash = currentHash;
         isProcessingImage = true;
 
-        const id = uuidv4();
-        const filePath = await saveImageToDiskAsync(image, id);
+        try {
+          const id = uuidv4();
+          const imageBuffer = image.toPNG();
 
-        const payload = {
-          id,
-          type: "img",
-          format: "png",
-          content: filePath,
-          imageMeta: { file_path: filePath },
-        };
+          const savedMeta = await imageProcessor.saveClipboardImage(
+            imageBuffer,
+            imageDir,
+            id
+          );
 
-        emitter.emit("item", payload);
-        isProcessingImage = false;
+          const payload = {
+            id,
+            type: "img",
+            format: "png",
+            content: savedMeta.file_path,
+            created_at: now,
+            imageMeta: savedMeta,
+          };
+
+          emitter.emit("item", payload);
+        } catch (saveErr) {
+          console.error("이미지 저장 중 오류:", saveErr);
+        } finally {
+          isProcessingImage = false;
+        }
       }
     } catch (err) {
-      // TODO: Error
-      console.error(err);
-      throw err;
+      const error = CCDError.create("E630", {
+        module: "monitor.js",
+        context: "monitor start",
+        details: err,
+      });
     }
   }, 1000);
 

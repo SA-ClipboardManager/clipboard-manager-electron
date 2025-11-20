@@ -42,7 +42,10 @@
  * @property {string} op_args // JSON string of arguments
  * @property {number} created_at
  */
-
+const ClipData = {};
+const ImageMeta = {};
+const Tag = {};
+const PendingSyncItem = {};
 /**
  * 클립보드 데이터 저장소의 추상 인터페이스
  * @interface ILocalRepository
