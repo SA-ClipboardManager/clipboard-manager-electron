@@ -1,4 +1,4 @@
-const serviceConfig = require('./serviceConfig');
+const serviceConfig = require("./serviceConfig");
 
 class AppContainer {
   static service = {};
@@ -7,16 +7,27 @@ class AppContainer {
   // 서비스 등록
   static initServices() {
     for (const [name, factory] of Object.entries(serviceConfig)) {
-      this.service[name] = factory(this.service);
+      try {
+        // 서비스 생성 시도
+        this.service[name] = factory(this.service);
+        console.log(
+          `[AppContainer] ✅ Service registered: ${name}`,
+          this.service[name] ? "OK" : "FAIL"
+        );
+      } catch (err) {
+        console.error(`[AppContainer] ❌ Service init failed: ${name}`, err);
+      }
     }
   }
 
   static initializeModules() {
-    const AuthModule = require('../../modules/authService/AuthModule');
+    const AuthModule = require("../../modules/authService/AuthModule");
     // const CloudModule = require("../../modules/cloud-sync/CloudModule");
-    const SearchModule = require('../../modules/search/SearchModule');
-    const EtcModule = require('../../modules/etc/EtcModule');
-    const { initClipboardModule } = require('../../modules/clipboard-monitor/index.js');
+    const SearchModule = require("../../modules/search/SearchModule");
+    const EtcModule = require("../../modules/etc/EtcModule.js");
+    const {
+      initClipboardModule,
+    } = require("../../modules/clipboard-monitor/index.js");
 
     // 모듈 인스턴스 생성 및 등록
     this.modules.authModule = new AuthModule(this);
@@ -29,8 +40,8 @@ class AppContainer {
   // 모든 모듈의 IPC 핸들러를 등록
   static registerIpcHandlers(ipcMain) {
     for (const [name, moduleInstance] of Object.entries(this.modules)) {
-      if (typeof moduleInstance.registerIpcHandlers === 'function') {
-        moduleInstance.registerIpcHandlers(ipcMain);
+      if (typeof moduleInstance.registerIpcHandler === "function") {
+        moduleInstance.registerIpcHandler(ipcMain);
       }
     }
   }

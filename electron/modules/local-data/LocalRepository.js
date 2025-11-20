@@ -721,6 +721,52 @@ class LocalRepository extends ILocalRepository {
       });
     }
   }
+
+  /**
+   * DB 원시 데이터를 UI에서 사용하기 쉬운 포맷으로 변환 (URL 처리 포함)
+   * @param {object} item - clipboard 테이블의 Row
+   * @param {object|null} imageMeta - image_meta 테이블의 Row
+   * @param {Array} tags - 태그 객체 배열
+   * @returns {ClipData}
+   */
+  transformItem(item, imageMeta = null, tags = []) {
+    let content = item.content;
+    let processedImageMeta = null;
+
+    // 태그 처리 (이미 객체 배열로 들어오므로 그대로 사용)
+    const tagNames = tags;
+
+    // 이미지 타입일 경우 메타데이터에 file:// URL 추가
+    if (item.type === "img" && imageMeta) {
+      // 로컬 경로를 file:// URL로 변환하는 헬퍼 함수
+      const makeFileUrl = (filePath) => {
+        if (!filePath) return null;
+        if (filePath.startsWith("http")) return filePath; // 이미 웹 URL인 경우
+        // Windows 경로(\)를 URL 슬래시(/)로 변환
+        return `file://${filePath.replace(/\\/g, "/")}`;
+      };
+
+      processedImageMeta = {
+        ...imageMeta,
+        originalUrl: makeFileUrl(imageMeta.file_path),
+        thumbnailUrl: makeFileUrl(imageMeta.thumbnail_path),
+      };
+    }
+
+    // 요청하신 반환 구조
+    return {
+      id: item.id,
+      type: item.type,
+      format: item.format,
+      content: item.content,
+      created_at: item.created_at,
+      is_synced: item.is_synced,
+      is_cloud_item: item.is_cloud_item,
+      tags: tagNames,
+      imageMeta: processedImageMeta,
+      thumbnail_path: processedImageMeta?.thumbnailUrl || null,
+    };
+  }
 }
 
 module.exports = LocalRepository;

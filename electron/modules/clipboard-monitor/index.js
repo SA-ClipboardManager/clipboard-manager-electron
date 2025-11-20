@@ -48,6 +48,7 @@ function startMonitoring(localRepo) {
           thumbnail_path: payload.imageMeta.thumbnailPath,
         };
       }
+
       const success = await localRepo.saveClipboardItem(itemToSave, meta);
     } catch (err) {
       const error = CCDError.create("E630", {
