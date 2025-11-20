@@ -15,24 +15,26 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",
-    "@tailwindcss/postcss": "^4.1.17",
+    "@tailwindcss/line-clamp": "^0.4.4",
     "@vitejs/plugin-react": "^5.1.0",
     "autoprefixer": "^10.4.22",
     "electron": "^33.4.11",
-    "@tailwindcss/line-clamp": "^0.4.4"
     "electron-builder": "^26.0.12",
     "electron-rebuild": "^3.2.9",
     "electron-vite": "^4.0.1",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.17"
+    "tailwindcss": "^3.4.17"
   },
   "dependencies": {
     "axios": "^1.13.2",
     "better-sqlite3": "^12.4.1",
+    "clsx": "^2.1.1",
+    "crypto-js": "^4.2.0",
     "prop-types": "^15.8.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "sharp": "^0.34.5",
+    "tailwind-merge": "^3.4.0",
     "uuid": "^9.0.1",
     "ws": "^8.18.3"
   }

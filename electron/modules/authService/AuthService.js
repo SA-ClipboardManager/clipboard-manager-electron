@@ -1,10 +1,10 @@
 // modules/auth/AuthService.js (Auth Module)
 // CommonJS
 
-const { IAuthService } = require("../core/IAuthService");
+const { IAuthService } = require("../interfaces/IAuthService");
 const CCDError = require("../shared/errors/CCDError");
 // Electron의 안전한 저장소 사용을 가정 (예: electron-store 또는 파일 시스템)
-const { localStore } = require("./local-store-util");
+// const { localStore } = require("./local-store-util");
 
 const API_ENDPOINT = "YOUR_CLOUD_API_BASE_URL";
 const TOKEN_KEY = "auth_tokens";
@@ -16,7 +16,7 @@ const TOKEN_KEY = "auth_tokens";
 class AuthService extends IAuthService {
   constructor() {
     super();
-    this.tokens = localStore.get(TOKEN_KEY) || null; // 로컬 저장소에서 초기 토큰 로드
+    // this.tokens = localStore.get(TOKEN_KEY) || null; // 로컬 저장소에서 초기 토큰 로드
   }
 
   /**
@@ -50,7 +50,7 @@ class AuthService extends IAuthService {
       };
 
       // 안전한 로컬 저장소에 토큰 저장
-      localStore.set(TOKEN_KEY, this.tokens);
+      // localStore.set(TOKEN_KEY, this.tokens);
 
       return this.tokens;
     } catch (error) {
@@ -72,7 +72,7 @@ class AuthService extends IAuthService {
 
     // 로컬 저장소 및 메모리에서 토큰 제거
     this.tokens = null;
-    localStore.delete(TOKEN_KEY);
+    // localStore.delete(TOKEN_KEY);
 
     return true;
   }

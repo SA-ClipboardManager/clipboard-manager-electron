@@ -1,7 +1,5 @@
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/postcss";
-import autoprefixer from "autoprefixer";
 
 export default defineConfig({
   main: {
@@ -26,11 +24,6 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: "src/index.html",
-      },
-    },
-    css: {
-      postcss: {
-        plugins: [tailwindcss(), autoprefixer()],
       },
     },
     plugins: [react()],

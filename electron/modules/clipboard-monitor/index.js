@@ -3,19 +3,23 @@
 
 const monitor = require("./monitor");
 const CCDError = require("../shared/errors/CCDError");
-const { LocalRepository } = require("../local-data/LocalRepository");
 
 /**
  * 클립보드 모듈 초기화
  */
-function initClipboardModule() {
-  startMonitoring();
+function initClipboardModule(services) {
+  const localRepo = services.LocalRepository;
+  startMonitoring(localRepo);
+  if (!localRepo) {
+    console.error("LocalRepository service not available.");
+    return;
+  }
 }
 
 /**
  * 모니터링 시작 — monitor는 감지만, index는 저장 담당
  */
-function startMonitoring() {
+function startMonitoring(localRepo) {
   const emitter = monitor.start();
 
   if (!emitter) return;
@@ -44,7 +48,7 @@ function startMonitoring() {
           thumbnail_path: payload.imageMeta.thumbnailPath,
         };
       }
-      const success = await LocalRepository.saveClipboardItem(itemToSave, meta);
+      const success = await localRepo.saveClipboardItem(itemToSave, meta);
     } catch (err) {
       const error = CCDError.create("E630", {
         module: "index",
