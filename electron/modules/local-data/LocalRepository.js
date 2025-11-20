@@ -730,26 +730,37 @@ class LocalRepository extends ILocalRepository {
    * @returns {ClipData}
    */
   transformItem(item, imageMeta = null, tags = []) {
-    let content = item.content;
     let processedImageMeta = null;
 
-    // 태그 처리 (이미 객체 배열로 들어오므로 그대로 사용)
     const tagNames = tags;
 
-    // 이미지 타입일 경우 메타데이터에 file:// URL 추가
+    const root = path.join(app.getPath("documents"), "CCD");
+
+    const makeFileUrl = (absPath) => {
+      if (!absPath) return null;
+      if (/^(https?:|data:)/i.test(absPath)) return absPath;
+      const rel = path.relative(root, absPath); // thumbnails/ 포함
+      const posix = rel.split(path.sep).join("/");
+      return `ccd://${encodeURI(posix)}`;
+    };
+
     if (item.type === "img" && imageMeta) {
-      // 로컬 경로를 file:// URL로 변환하는 헬퍼 함수
-      const makeFileUrl = (filePath) => {
-        if (!filePath) return null;
-        if (filePath.startsWith("http")) return filePath; // 이미 웹 URL인 경우
-        // Windows 경로(\)를 URL 슬래시(/)로 변환
-        return `file://${filePath.replace(/\\/g, "/")}`;
-      };
+      const originalExists =
+        imageMeta.file_path && fs.existsSync(imageMeta.file_path);
+      const thumbExists =
+        imageMeta.thumbnail_path && fs.existsSync(imageMeta.thumbnail_path);
+
+      const originalUrl = originalExists
+        ? makeFileUrl(imageMeta.file_path)
+        : null;
+      const thumbnailUrl = thumbExists
+        ? makeFileUrl(imageMeta.thumbnail_path)
+        : originalUrl;
 
       processedImageMeta = {
         ...imageMeta,
-        originalUrl: makeFileUrl(imageMeta.file_path),
-        thumbnailUrl: makeFileUrl(imageMeta.thumbnail_path),
+        originalUrl,
+        thumbnailUrl,
       };
     }
 

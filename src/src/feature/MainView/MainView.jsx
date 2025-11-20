@@ -1,23 +1,38 @@
-import React, { useState, useRef, useEffect } from 'react';
-import clsx from 'clsx';
-import '../../styles/color.css';
-import { saveDroppedWebImage, saveDroppedWebText, pasteItem, deleteItem } from '../../utils/electronService';
+import React, { useState, useRef, useEffect } from "react";
+import clsx from "clsx";
+import "../../styles/color.css";
+import {
+  saveDroppedWebImage,
+  saveDroppedWebText,
+  pasteItem,
+  deleteItem,
+} from "../../utils/electronService";
 
-const MainView = ({ isTagChecked, items, toggleSelect, addItem, refetch, fileType, setFileType }) => {
+const MainView = ({
+  isTagChecked,
+  items,
+  toggleSelect,
+  addItem,
+  refetch,
+  fileType,
+  setFileType,
+}) => {
   const [activeItemId, setActiveItemId] = useState(null);
   const containerRefs = useRef({});
 
   // 모달 외부 클릭 시 닫기
   useEffect(() => {
     const handleClickOutside = (e) => {
-      const clickedInsideSomeModal = Object.values(containerRefs.current).some((ref) => ref && ref.contains(e.target));
+      const clickedInsideSomeModal = Object.values(containerRefs.current).some(
+        (ref) => ref && ref.contains(e.target)
+      );
       if (!clickedInsideSomeModal) {
         setActiveItemId(null);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const toggleModal = (id) => {
@@ -29,7 +44,7 @@ const MainView = ({ isTagChecked, items, toggleSelect, addItem, refetch, fileTyp
       e.preventDefault();
 
       // 1. 웹 이미지 URL 먼저 처리
-      const uri = e.dataTransfer.getData('text/uri-list');
+      const uri = e.dataTransfer.getData("text/uri-list");
       const isImageUrl = uri && uri.match(/\.(jpe?g|png|gif|bmp|webp|svg)$/i);
       if (isImageUrl) {
         const result = await saveDroppedWebImage({ url: uri });
@@ -38,25 +53,25 @@ const MainView = ({ isTagChecked, items, toggleSelect, addItem, refetch, fileTyp
       }
 
       // 2. 그 외 웹 텍스트 처리
-      const plainText = e.dataTransfer.getData('text/plain');
+      const plainText = e.dataTransfer.getData("text/plain");
       if (plainText && plainText.trim().length > 0) {
         const result = await saveDroppedWebText({ content: plainText });
         if (result.success && result.item) addItem(result.item);
         return;
       }
 
-      console.warn('드롭된 데이터가 유효하지 않음');
+      console.warn("드롭된 데이터가 유효하지 않음");
     };
 
     const handleDragOver = (e) => e.preventDefault();
 
     // dragNdrop 관련 코드 제거
-    window.addEventListener('drop', handleDrop);
-    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener("drop", handleDrop);
+    window.addEventListener("dragover", handleDragOver);
 
     return () => {
-      window.removeEventListener('drop', handleDrop);
-      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener("drop", handleDrop);
+      window.removeEventListener("dragover", handleDragOver);
     };
   }, [addItem]);
 
@@ -64,12 +79,12 @@ const MainView = ({ isTagChecked, items, toggleSelect, addItem, refetch, fileTyp
     try {
       const res = await pasteItem(id);
       if (res.paste) {
-        console.log('클립보드에 복사 성공!');
+        console.log("클립보드에 복사 성공!");
       } else {
-        console.warn('클립보드 복사 실패:', res.error);
+        console.warn("클립보드 복사 실패:", res.error);
       }
     } catch (err) {
-      console.error('IPC 에러:', err);
+      console.error("IPC 에러:", err);
     }
   };
 
@@ -82,27 +97,38 @@ const MainView = ({ isTagChecked, items, toggleSelect, addItem, refetch, fileTyp
         setActiveItemId(null); //해당 item 모달 닫기
       }
     } catch (err) {
-      console.error('삭제 중 오류:', err);
+      console.error("삭제 중 오류:", err);
     }
   };
-  const visibleItems = items.filter((item) => (fileType === 'img' ? item.type === 'image' : fileType === 'txt' ? item.type === 'text' : true));
+  const visibleItems = items.filter((item) =>
+    fileType === "img"
+      ? item.type === "image"
+      : fileType === "txt"
+      ? item.type === "text"
+      : true
+  );
 
   const needScroll = visibleItems.length > 6;
 
   return (
     <div
-      className={clsx('grid grid-cols-2 gap-3 px-6 py-4 !w-full  custom-scrollbar', needScroll ? '!max-h-[calc(100vh-22.9rem)] overflow-y-auto' : 'overflow-y-hidden')}
-      style={{ WebkitAppRegion: 'no-drag' }} // 클릭 이벤트 허용
+      className={clsx(
+        "grid grid-cols-2 gap-3 px-6 py-4 !w-full  custom-scrollbar",
+        needScroll
+          ? "!max-h-[calc(100vh-22.9rem)] overflow-y-auto"
+          : "overflow-y-hidden"
+      )}
+      style={{ WebkitAppRegion: "no-drag" }} // 클릭 이벤트 허용
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
-        console.log('Drop 이벤트 내부 div에서 감지됨');
+        console.log("Drop 이벤트 내부 div에서 감지됨");
       }}
     >
       {items
         .filter((item) => {
-          if (fileType === 'img') return item.type === 'image';
-          if (fileType === 'txt') return item.type === 'text';
+          if (fileType === "img") return item.type === "image";
+          if (fileType === "txt") return item.type === "text";
           return true; // "all"인 경우
         })
         .map((item) => (
@@ -117,20 +143,20 @@ const MainView = ({ isTagChecked, items, toggleSelect, addItem, refetch, fileTyp
               e.stopPropagation();
               // handlePaste(item.itemId);
             }}
-            style={{ WebkitAppRegion: 'no-drag' }} // 클릭 이벤트 허용
+            style={{ WebkitAppRegion: "no-drag" }} // 클릭 이벤트 허용
           >
             <div className="relative  !h-[9.2rem] bg-blue-100">
-              {item.type === 'image' && (
+              {item.type === "image" && (
                 <>
                   <img
-                    src={item.thumbnail_path ?? item.src}
+                    src={`ccd://${item.thumbnail_path ?? item.src}`}
                     alt="dropped-img"
                     className="w-full h-[9.2rem] object-cover"
                     onClick={() => handlePaste(item.itemId)}
                   />
                 </>
               )}
-              {item.type === 'text' && item.content && (
+              {item.type === "text" && item.content && (
                 <p
                   className="pt-[1rem]  px-[2rem] text-xl text-gray-700   
               line-clamp-3 h-auto"
@@ -155,14 +181,14 @@ const MainView = ({ isTagChecked, items, toggleSelect, addItem, refetch, fileTyp
               {/* )} */}
 
               <div className="absolute bottom-1 right-1 flex gap-1 items-end">
-                {(item.shared === 'both' || item.shared === 'cloud') && (
+                {(item.shared === "both" || item.shared === "cloud") && (
                   <img
                     src="cloud.svg"
                     alt="cloud"
                     className="w-[1.5rem] h-[1.5rem]"
                   />
                 )}
-                {(item.shared === 'both' || item.shared === 'local') && (
+                {(item.shared === "both" || item.shared === "local") && (
                   <img
                     src="folder.svg"
                     alt="folder"
@@ -182,7 +208,15 @@ const MainView = ({ isTagChecked, items, toggleSelect, addItem, refetch, fileTyp
                 border-t h-[2.6rem] border-[var(--blue-200)] pl-[1.6rem]
               "
               >
-                {item.tags && item.tags.length > 0 ? <span>{item.tags.map((t) => `#${typeof t === 'string' ? t : t.tag}`).join(' ')}</span> : <span># 태그 없음</span>}
+                {item.tags && item.tags.length > 0 ? (
+                  <span>
+                    {item.tags
+                      .map((t) => `#${typeof t === "string" ? t : t.tag}`)
+                      .join(" ")}
+                  </span>
+                ) : (
+                  <span># 태그 없음</span>
+                )}
               </div>
             ) : null}
 
@@ -202,32 +236,32 @@ const MainView = ({ isTagChecked, items, toggleSelect, addItem, refetch, fileTyp
                   leading-normal
                   "
               >
-                {(item.shared === 'both' || item.shared === 'all') && (
+                {(item.shared === "both" || item.shared === "all") && (
                   <>
                     <div
                       className="py-2 hover:bg-blue-50 cursor-pointer"
-                      onClick={() => handleDelete(item.itemId, 'both')}
+                      onClick={() => handleDelete(item.itemId, "both")}
                     >
                       모두 삭제
                     </div>
                     <hr />
                   </>
                 )}
-                {(item.shared === 'local' || item.shared === 'both') && (
+                {(item.shared === "local" || item.shared === "both") && (
                   <>
                     <div
                       className="py-2 hover:bg-blue-50 cursor-pointer"
-                      onClick={() => handleDelete(item.itemId, 'local')}
+                      onClick={() => handleDelete(item.itemId, "local")}
                     >
                       Local에서 삭제
                     </div>
                     <hr />
                   </>
                 )}
-                {(item.shared === 'cloud' || item.shared === 'both') && (
+                {(item.shared === "cloud" || item.shared === "both") && (
                   <div
                     className="py-2 hover:bg-blue-50 cursor-pointer"
-                    onClick={() => handleDelete(item.itemId, 'cloud')}
+                    onClick={() => handleDelete(item.itemId, "cloud")}
                   >
                     Cloud에서 삭제
                   </div>
