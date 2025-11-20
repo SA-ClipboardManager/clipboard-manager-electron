@@ -723,5 +723,4 @@ class LocalRepository extends ILocalRepository {
   }
 }
 
-const localRepoInstance = new LocalRepository();
-module.exports = { LocalRepository: localRepoInstance };
+module.exports = LocalRepository;

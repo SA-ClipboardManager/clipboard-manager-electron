@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     logoutUser: () => ipcRenderer.invoke('user-logout'),
 
-    getLoginState: () => ipcRenderer.invoke("get-login-state"),
+    // getLoginState: () => ipcRenderer.invoke("get-login-state"),
 
     // 붙여넣기
     pasteItem: (itemId) => ipcRenderer.invoke("paste-item", {itemId}),
@@ -50,18 +50,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // 클라우드
     uploadSelectedItems: (itemIds) =>
         ipcRenderer.invoke("upload-selected-items", itemIds),
-    downloadSelectedItems: (itemIds) =>
-        ipcRenderer.invoke("download-selected-items", itemIds),
+    // downloadSelectedItems: (itemIds) =>
+    //     ipcRenderer.invoke("download-selected-items", itemIds),
 
     onCloudUploadStatusChange: (callback) =>
         ipcRenderer.on("clipboard-upload-status", (_, status) => callback(status)),
 
     toggleCloudUpload: () => ipcRenderer.send("toggle-cloud-upload"),
 
-    //웹 콘텐츠 드래그앤드랍
-    saveDroppedWebText: (data) =>
-        ipcRenderer.invoke("save-dropped-web-text", data),
 
-    saveDroppedWebImage: (data) =>
-        ipcRenderer.invoke("save-dropped-web-image", data),
 });

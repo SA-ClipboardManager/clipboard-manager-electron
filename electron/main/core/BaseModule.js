@@ -1,6 +1,6 @@
-import {IpcRoute} from "./IpcRoute.js";
+const IpcRoute =require( "./IpcRoute");
 
-export class BaseModule{
+class BaseModule{
     constructor(app, prefix){
         this.app = app;
         this.route = new IpcRoute(prefix);
@@ -11,3 +11,4 @@ export class BaseModule{
 
     }
 }
+module.exports = BaseModule;
