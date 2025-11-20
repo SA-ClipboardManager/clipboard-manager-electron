@@ -14,14 +14,14 @@
     "postinstall": "npm run rebuild"
   },
   "devDependencies": {
+    "@tailwindcss/line-clamp": "^0.4.4",
     "@vitejs/plugin-react": "^5.1.0",
+    "autoprefixer": "^10.4.22",
     "electron": "^39.1.1",
     "electron-builder": "^26.0.12",
     "electron-rebuild": "^3.2.9",
-    "electron-vite": "^4.0.1"
-  },
-  "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "electron-vite": "^4.0.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17"
   }
 }
