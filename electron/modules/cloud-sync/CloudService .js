@@ -16,6 +16,12 @@ const TOKEN_STORAGE = { accessToken: null, refreshToken: null };
 
 const MAX_RETRIES = 5;
 
+const SERVICES = {
+  AUTH: "/auth/v1", // -> Login Service
+  CRUD: "/api/v1", // -> CRUD Service
+  SEARCH: "/search/v1", // -> Embedding Service
+};
+
 /**
  * ICloudService 인터페이스를 구현하는 실제 통신 서비스
  * @implements {ICloudService}
@@ -23,7 +29,7 @@ const MAX_RETRIES = 5;
 class CloudService extends ICloudService {
   /**
    * @param {ILocalRepository} repository - 재시도 상태 업데이트 및 Outbox 관리를 위한 로컬 저장소.
-   * @param {object} config - 초기 설정 객체 { apiBaseURL, authToken, refreshToken }
+   * @param {object} config - { apiBaseURL: "http://localhost:80" } - 초기 설정 객체 { apiBaseURL, authToken, refreshToken }
    */
   constructor(repository, config) {
     super();
@@ -61,11 +67,7 @@ class CloudService extends ICloudService {
       (response) => response,
       async (error) => {
         const originalRequest = error.config;
-        // 기존 코드의 401 및 토큰 갱신 로직 그대로 사용
         if (error.response?.status === 401 && !originalRequest._retry) {
-          // ... (기존 코드의 토큰 갱신 처리 로직) ...
-          // 로직이 길므로 생략하지만, 기존 CloudDataModule의 인터셉터 로직을 사용합니다.
-
           if (this.isRefreshing) {
             // 대기 로직
           }
@@ -113,12 +115,9 @@ class CloudService extends ICloudService {
    */
   async login(credentials) {
     try {
-      const response = await axios.post(
-        `${this.apiBaseURL}/login`,
-        credentials
-      );
+      const url = `${SERVICES.AUTH}/api/v1/auth/login`;
+      const response = await this.axiosInstance.post(url, credentials);
 
-      // 토큰 저장 및 반환
       this.updateTokenStorage(response.data);
       return response.data;
     } catch (error) {
@@ -136,7 +135,7 @@ class CloudService extends ICloudService {
     const config = await this.repository.getConfig();
     const lastSyncTime = config.last_modified || 0;
 
-    const url = `/sync/initial-metadata`;
+    const url = `${SERVICES.CRUD}/api/v1/clipboard-data`;
 
     try {
       // 1. 서버에 마지막 동기화 시간 이후의 메타데이터 요청
