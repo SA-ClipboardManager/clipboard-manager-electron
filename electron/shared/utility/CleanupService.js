@@ -1,9 +1,10 @@
 // cleanup.service.js (Core Module)
 // CommonJS
 
-const ImageProcessor = require("../utils/image.processor");
-const { ILocalRepository } = require("../local-data/LocalRepository");
+const ImageProcessor = require("../fileUtility/imageProcessor");
+const { ILocalRepository } = require("../interfaces/ILocalRepository");
 const CCDError = require("../shared/errors/CCDError");
+const fs = require("fs-extra");
 
 /**
  * 로컬 클립보드 데이터의 주기적인 정리 및 유지보수 비즈니스 로직을 담당

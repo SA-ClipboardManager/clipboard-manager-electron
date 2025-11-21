@@ -1,24 +1,89 @@
-const LocalRepository = require('../../modules/local-data/LocalRepository');
-// const CloudServiceModule = require('../../modules/cloud-sync/CloudService');
-// const CloudService = CloudServiceModule?.CloudService || CloudServiceModule;
-// const { AuthService } = require('../../modules/authService/AuthService');
-// const { EtcService } = require('../../modules/etc/EtcService.js');
+const DatabaseContext = require("../../infrastructure/database/DatabaseContext");
+const ClipboardRepository = require("../../infrastructure/repositories/ClipboardRepository");
+const SyncRepository = require("../../infrastructure/repositories/SyncRepository");
+const {
+  TokenStorage,
+} = require("../../modules/authService/token-storage/TokenStorage");
+const { AuthService } = require("../../modules/authService/AuthService");
+const { CloudService } = require("../../modules/cloud/CloudService");
+const {
+  ClipboardService,
+} = require("../../modules/clipboard/ClipboardService");
+const EtcService = require("../../modules/etc/EtcService");
+require("dotenv").config();
 
-// AuthService 모듈은 { AuthService }로 내보내거나 default로 내보낼 수 있으니 둘 다 지원
-const AuthModule = require('../../modules/authService/AuthService');
-const AuthService = AuthModule?.AuthService || AuthModule;
+class serviceConfig {
+  constructor() {
+    this.infrastructure = {};
+    this.repositories = {};
+    this.services = {};
+  }
 
-// EtcService 모듈도 네임드/기본 내보내기 둘 다 처리
-const EtcModule = require('../../modules/etc/EtcService.js');
-const EtcService = EtcModule?.EtcService || EtcModule;
+  /**
+   * DB 초기화
+   */
+  initializeInfrastructure() {
+    // DB Context 초기화 (Singleton)
+    const dbContext = new DatabaseContext();
+    dbContext.initialize();
 
-//TODO ClipMonitor Service 완성되면 연결하기
-module.exports = {
-  LocalRepository: () => new LocalRepository(),
+    this.infrastructure.dbContext = dbContext;
+    console.log("[serviceConfig] Infrastructure initialized.");
+  }
 
-  // CloudService: (services) => new CloudService(services.LocalRepository),
+  /**
+   *리포지토리 초기화 (DB Context 주입)
+   */
+  initializeRepositories() {
+    const { dbContext } = this.infrastructure;
 
-  AuthService: () => new AuthService(),
+    // 도메인별 리포지토리 분리 생성
+    this.repositories.clipboardRepo = new ClipboardRepository(dbContext);
+    this.repositories.syncRepo = new SyncRepository(dbContext);
 
-  EtcService: (services) => new EtcService(services.LocalRepository),
-};
+    console.log("[serviceConfig] Repositories initialized.");
+  }
+
+  /**
+   * 서비스 초기화 (리포지토리 및 타 서비스 주입)
+   */
+  initializeServices() {
+    const { clipboardRepo, syncRepo } = this.repositories;
+    const apiBaseURL = process.env.CLOUD_API_BASE_URL;
+    console.log("⭐⭐⭐⭐");
+    console.log(apiBaseURL);
+
+    const tokenStorage = new TokenStorage();
+
+    const authService = new AuthService(tokenStorage, { apiBaseURL });
+
+    const cloudService = new CloudService(syncRepo, {
+      tokenStorage,
+      authService,
+      apiBaseURL,
+    });
+
+    const clipboardService = new ClipboardService(clipboardRepo);
+
+    const etcService = new EtcService(clipboardRepo, clipboardService);
+
+    this.services = {
+      TokenStorage: tokenStorage,
+      AuthService: authService,
+      CloudService: cloudService,
+      ClipboardService: clipboardService,
+      EtcService: etcService,
+    };
+
+    console.log("[serviceConfig] Services initialized.");
+  }
+
+  /**
+   *
+   */
+  getServices() {
+    return this.services;
+  }
+}
+
+module.exports = serviceConfig;

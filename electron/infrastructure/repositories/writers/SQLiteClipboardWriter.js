@@ -1,5 +1,5 @@
-// src/infrastructure/repositories/writers/SQLiteClipboardWriter.js
-const CCDError = require("../../../../shared/errors/CCDError");
+// infrastructure/repositories/writers/SQLiteClipboardWriter.js
+const CCDError = require("../../../shared/errors/CCDError");
 
 class SQLiteClipboardWriter {
   /**
@@ -104,6 +104,62 @@ class SQLiteClipboardWriter {
       });
     }
   }
+  // === src/main/infrastructure/repositories/writers/SQLiteClipboardWriter.js 내부에 추가 ===
+
+  /**
+   * SyncRepository가 Outbox에 저장할 페이로드 데이터와 메타데이터를 조회합니다.
+   * (Writer 클래스 내부에 필요한 Read 기능을 추가하여 트랜잭션 내에서 사용)
+   * @param {string} id - 클립보드 ID
+   * @returns {object | null}
+   */
+  getItemData(id) {
+    try {
+      // 1. 클립보드 기본 정보 + 이미지 메타데이터 조인 조회
+      const stmt = this.db.prepare(`
+            SELECT 
+                c.id, c.type, c.format, c.content, c.created_at,
+                im.width, im.height, im.file_size, im.file_path, im.thumbnail_path
+            FROM clipboard c
+            LEFT JOIN image_meta im ON c.id = im.data_id
+            WHERE c.id = ?
+        `);
+
+      const row = stmt.get(id);
+      if (!row) return null;
+
+      // 2. 이미지 메타데이터 객체 구성
+      const imageMeta = row.file_path
+        ? {
+            width: row.width,
+            height: row.height,
+            file_size: row.file_size,
+            file_path: row.file_path,
+            thumbnail_path: row.thumbnail_path,
+            // *주의*: Content 필드에는 파일 경로 대신 URL이 포함될 수 있으므로,
+            // 원본 데이터(c.content)를 사용합니다.
+          }
+        : null;
+
+      // 3. 최종 Outbox Payload 형식 구성
+      return {
+        id: row.id,
+        type: row.type,
+        format: row.format,
+        content: row.content,
+        created_at: row.created_at,
+        imageMeta: imageMeta,
+        // [TODO: 태그] 태그가 있다면 여기서 조회하여 배열로 추가해야 합니다.
+        tags: [],
+      };
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "SQLiteClipboardWriter",
+        context: "getItemData (Read for Outbox)",
+        message: error.message,
+        cause: error,
+      });
+    }
+  }
 
   // --- 태그 관련 (기존 insertTagAndConnect 로직 분해) ---
 
@@ -166,6 +222,65 @@ class SQLiteClipboardWriter {
       throw CCDError.create("E610", {
         module: "SQLiteClipboardWriter",
         context: "updateTagServerId",
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * 이름과 출처로 태그 조회
+   * @param {string} name
+   * @param {string} source
+   * @returns {object | null}
+   */
+  getTagByNameAndSource(name, source) {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT local_id, tag_id, name, source FROM tag
+        WHERE name = ? AND source = ?
+        COLLATE NOCASE
+      `);
+      return stmt.get(name, source) || null;
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "SQLiteClipboardWriter",
+        context: "getTagByNameAndSource",
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * 태그 조회 (local_id로)
+   * @param {string} localId
+   * @returns {object | null}
+   */
+  getTagByLocalId(localId) {
+    try {
+      const stmt = this.db.prepare("SELECT * FROM tag WHERE local_id = ?");
+      return stmt.get(localId) || null;
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "SQLiteClipboardWriter",
+        context: "getTagByLocalId",
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * 태그 서버 ID 충돌 확인
+   * @param {string} serverId
+   * @returns {object | null}
+   */
+  getTagByServerId(serverId) {
+    try {
+      const stmt = this.db.prepare("SELECT * FROM tag WHERE tag_id = ?");
+      return stmt.get(serverId) || null;
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "SQLiteClipboardWriter",
+        context: "getTagByServerId",
         message: error.message,
       });
     }

@@ -1,11 +1,11 @@
-// src/infrastructure/uow/SQLiteUnitOfWork.js
+// infrastructure/uow/SQLiteUnitOfWork.js
 const {
   SQLiteClipboardWriter,
 } = require("../repositories/writers/SQLiteClipboardWriter");
 const {
   SQLiteOutboxWriter,
 } = require("../repositories/writers/SQLiteOutboxWriter");
-const CCDError = require("../../../shared/errors/CCDError");
+const CCDError = require("../../shared/errors/CCDError");
 
 /**
  * SQLite 전용 Unit of Work 구현체

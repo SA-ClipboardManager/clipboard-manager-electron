@@ -1,14 +1,14 @@
 const BaseModule = require("../../main/core/BaseModule");
-const CCDError = require("../shared/errors/CCDError");
+const CCDError = require("../../shared/errors/CCDError");
 
 class AuthModule extends BaseModule {
-  constructor(app) {
-    super(app, "auth");
-    this.service = app.service.AuthService;
-    if (!this.service) {
-      console.error("AuthService not initialized.");
-    }
+  constructor(services) {
+  super(services, "auth");
+  this.service = services.AuthService;  // Changed from app.service.AuthService to services.AuthService
+  if (!this.service) {
+    console.error("AuthService not initialized.");
   }
+}
 
   registerIpcHandler(ipcMain) {
     ipcMain.handle("user-login", async (_, { userId, password }) => {
@@ -53,8 +53,20 @@ class AuthModule extends BaseModule {
       }
     });
 
-    ipcMain.handle("get-login-state", this.service.getLoginState());
+    ipcMain.handle("get-login-state", async () => {
+      try {
+        const loginState = await this.service.getLoginState();
+        return { success: true, ...loginState };
+      } catch (err) {
+        const error = CCDError.create("E610", {
+          module: "AuthModule",
+          context: "로그인 상태 확인",
+          details: err.message,
+        });
+        console.error(error);
+        return error.toJSON();
+      }
+    });
   }
-
 }
 module.exports = AuthModule;

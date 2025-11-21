@@ -1,5 +1,5 @@
-// src/infrastructure/repositories/writers/SQLiteOutboxWriter.js
-const CCDError = require("../../../../shared/errors/CCDError");
+// infrastructure/repositories/writers/SQLiteOutboxWriter.js
+const CCDError = require("../../../shared/errors/CCDError");
 
 class SQLiteOutboxWriter {
   /**
