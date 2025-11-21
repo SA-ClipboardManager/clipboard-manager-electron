@@ -15,8 +15,9 @@ const TOKEN_KEY = "auth_tokens";
  */
 class AuthService extends IAuthService {
   constructor() {
-    super();
-    // this.tokens = localStore.get(TOKEN_KEY) || null; // 로컬 저장소에서 초기 토큰 로드
+      super();
+      // this.tokens = localStore.get(TOKEN_KEY) || null; // 로컬 저장소에서 초기 토큰 로드
+      this.loginState = false;
   }
 
   /**
@@ -51,7 +52,7 @@ class AuthService extends IAuthService {
 
       // 안전한 로컬 저장소에 토큰 저장
       // localStore.set(TOKEN_KEY, this.tokens);
-
+        this.loginState = true;
       return this.tokens;
     } catch (error) {
       throw CCDError.create("E501", {
@@ -73,7 +74,7 @@ class AuthService extends IAuthService {
     // 로컬 저장소 및 메모리에서 토큰 제거
     this.tokens = null;
     // localStore.delete(TOKEN_KEY);
-
+    this.loginState = false;
     return true;
   }
 
@@ -97,6 +98,10 @@ class AuthService extends IAuthService {
     // 리프레시 토큰을 사용하여 새로운 액세스 토큰을 받아오는 로직 구현
     // ...
     throw new Error("Refresh token implementation required.");
+  }
+
+  getLoginState(){
+      return this.loginState;
   }
 }
 

@@ -17,14 +17,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     logoutUser: () => ipcRenderer.invoke('user-logout'),
 
-    // getLoginState: () => ipcRenderer.invoke("get-login-state"),
+    getLoginState: () => ipcRenderer.invoke("get-login-state"),
 
     // 붙여넣기
     pasteItem: (itemId) => ipcRenderer.invoke("paste-item", {itemId}),
 
     // 실시간 클립보드 업데이트 감지
     onClipboardUpdated: (callback) =>
-        ipcRenderer.on("clipboard-updated", callback),
+        ipcRenderer.on("clipboard-updated",(_, items) => callback(items)),
 
     offClipboardUpdated: (callback) =>
         ipcRenderer.removeListener("clipboard-updated", callback),
