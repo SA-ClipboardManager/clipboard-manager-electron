@@ -13,15 +13,18 @@ class AuthModule extends BaseModule {
   registerIpcHandler(ipcMain) {
     ipcMain.handle("user-login", async (_, { userId, password }) => {
       try {
-        const { loginResult, access_token, refresh_token } =
-          await this.service.login(userId, password);
+        const tokens = await this.service.login(userId, password);
         // if (loginResult && access_token) isLogin = true;
 
         // 토큰 저장은 authService 내부 cloudDB 인스턴스에서 처리됨
-        return {
-          tokenMsg: loginResult === true,
-          accessToken: !!access_token,
-        };
+        if (tokens && tokens.accessToken) {
+          return {
+            success: true,
+            message: "로그인 성공",
+          };
+        } else {
+          throw new Error("토큰 발급 실패");
+        }
       } catch (err) {
         const error = CCDError.create(err.code || "E610", {
           module: "ipcHandler",
