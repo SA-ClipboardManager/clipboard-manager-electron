@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     logoutUser: () => ipcRenderer.invoke('user-logout'),
 
-    // getLoginState: () => ipcRenderer.invoke("get-login-state"),
+    getLoginState: () => ipcRenderer.invoke("get-login-state"),
 
     // 붙여넣기
     pasteItem: (itemId) => ipcRenderer.invoke("paste-item", {itemId}),
