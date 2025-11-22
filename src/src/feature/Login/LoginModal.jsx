@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import CryptoJS from 'crypto-js';
 import { twMerge } from 'tailwind-merge';
 
 import '../../styles/color.css';
@@ -62,26 +61,6 @@ const LoginModal = ({ loginInfo, setLoginInfo }) => {
     };
   }, []);
 
-  // 렌더러 ->메인으로 보내는 id, pw AES알고리즘으로 암호화
-  const encryptAES = (text) => {
-    const key = CryptoJS.enc.Hex.parse(import.meta.env.VITE_AES_KEY); // 🔁 바뀐 부분
-    const iv = CryptoJS.enc.Hex.parse(import.meta.env.VITE_AES_IV); // 🔁 바뀐 부분
-    //enc.Hex.parse()를 통해 hex문자열을 진짜 binary로 변환환
-    console.log('thisis key: ', key);
-    console.log('thisis iv: ', iv);
-
-    if (!key || !iv) {
-      throw new Error('AES_KEY 또는 AES_IV 환경변수가 정의되지 않았습니다.');
-    }
-    const encrypted = CryptoJS.AES.encrypt(text, key, {
-      iv,
-      mode: CryptoJS.mode.CBC,
-      padding: CryptoJS.pad.Pkcs7,
-    });
-
-    return encrypted.toString(); // Base64 문자열
-  };
-
   const handleLogin = async () => {
     setLoginSuccess('');
     setLoginError('');
@@ -103,19 +82,15 @@ const LoginModal = ({ loginInfo, setLoginInfo }) => {
     }
 
     try {
-      const encryptedId = encryptAES(userId);
-      const encryptedPw = encryptAES(pw);
+      const response = await loginUser(userId, pw);
 
-      const { tokenMsg, accessToken } = await loginUser(encryptedId, encryptedPw);
-
-      if (!tokenMsg) {
-        setLoginError('로그인 실패: 계정 정보를 확인하세요.');
-        setLoginSuccess('');
-      } else {
-        setLoginSuccess('로그인 성공');
+      if (response && response.success) {
+        setLoginSuccess(response.message || '로그인 성공');
         setLoginError('');
-
         setLoginInfo({ isLoggedIn: true, userId });
+      } else {
+        setLoginError(response?.message || '로그인 실패: 계정 정보를 확인하세요.');
+        setLoginSuccess('');
       }
     } catch (error) {
       console.error('로그인 중 오류 발생:', error);
@@ -152,9 +127,7 @@ const LoginModal = ({ loginInfo, setLoginInfo }) => {
     }
 
     try {
-      const encryptedId = encryptAES(userId);
-      const encryptedPw = encryptAES(pw);
-      const { joinResultMsg } = await registerUser(encryptedId, encryptedPw);
+      const { joinResultMsg } = await registerUser(userId, pw);
 
       if (joinResultMsg === 'success') {
         setJoinSuccess('회원가입 성공');

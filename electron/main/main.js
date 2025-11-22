@@ -4,7 +4,6 @@ const path = require("path");
 const fs = require("fs");
 const AppContainer = require("./core/AppContainer");
 let mainWindow = null;
-
 const SCHEME = "ccd";
 protocol.registerSchemesAsPrivileged([
   {
@@ -63,13 +62,23 @@ async function createWindow() {
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      devTools: true, // Ensure devTools are enabled
     },
+    show: false, // Don't show until ready-to-show
+  });
+
+  // Open dev tools immediately after the window is ready
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents.openDevTools();
+  });
+
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
   });
 
   const isDev = process.env.NODE_ENV === "development";
   if (isDev) {
     await mainWindow.loadURL("http://localhost:5173");
-    mainWindow.webContents.openDevTools();
   } else {
     await mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
   }

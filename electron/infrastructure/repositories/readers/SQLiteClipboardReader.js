@@ -1,6 +1,8 @@
-// src/infrastructure/repositories/readers/SQLiteClipboardReader.js
+// infrastructure/repositories/readers/SQLiteClipboardReader.js
+const path = require("path");
+const { app } = require("electron");
 const fs = require("fs-extra");
-const CCDError = require("../../../../shared/errors/CCDError");
+const CCDError = require("../../../shared/errors/CCDError");
 
 class SQLiteClipboardReader {
   /**
@@ -50,7 +52,19 @@ class SQLiteClipboardReader {
       `);
       const tags = tagsStmt.all(id);
 
-      return this._mapRowToEntity(row, tags);
+      // 이미지 메타데이터 추출
+      const imageMeta = row.file_path
+        ? {
+            data_id: row.id,
+            width: row.width,
+            height: row.height,
+            file_size: row.file_size,
+            file_path: row.file_path,
+            thumbnail_path: row.thumbnail_path,
+          }
+        : null;
+
+      return this._mapRowToEntity(row, imageMeta, tags);
     } catch (error) {
       throw CCDError.create("E610", {
         module: "SQLiteClipboardReader",
@@ -95,11 +109,25 @@ class SQLiteClipboardReader {
 
           tags = names.map((name, idx) => ({
             name: name,
+            tag_id: null, // GROUP_CONCAT에서는 tag_id를 가져오지 않았으므로 null
             source: sources[idx] || "auto",
             local_id: ids[idx],
           }));
         }
-        return this._mapRowToEntity(row, tags);
+
+        // 이미지 메타데이터 추출
+        const imageMeta = row.file_path
+          ? {
+              data_id: row.id,
+              width: row.width,
+              height: row.height,
+              file_size: row.file_size,
+              file_path: row.file_path,
+              thumbnail_path: row.thumbnail_path,
+            }
+          : null;
+
+        return this._mapRowToEntity(row, imageMeta, tags);
       });
     } catch (error) {
       throw CCDError.create("E610", {
@@ -168,40 +196,102 @@ class SQLiteClipboardReader {
     }
   }
 
+  /**
+   * 이미지 메타데이터 조회 (단일 항목)
+   * @param {string} dataId
+   * @returns {object | null}
+   */
+  getImageMeta(dataId) {
+    try {
+      const stmt = this.db.prepare(
+        "SELECT * FROM image_meta WHERE data_id = ?"
+      );
+      return stmt.get(dataId) || null;
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "SQLiteClipboardReader",
+        context: "getImageMeta",
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * 모든 이미지 메타데이터 조회 (CleanupService용)
+   * @returns {Array<object>}
+   */
+  getAllImageMeta() {
+    try {
+      const stmt = this.db.prepare(
+        "SELECT data_id, file_path, thumbnail_path FROM image_meta"
+      );
+      return stmt.all();
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "SQLiteClipboardReader",
+        context: "getAllImageMeta",
+        message: error.message,
+      });
+    }
+  }
+
   // =================================================================
   // Private Helper Methods
   // =================================================================
 
   /**
-   * DB Row 데이터를 도메인 엔티티 구조로 변환
-   * @param {object} row
-   * @param {Array} tags
+   * DB Row 데이터를 도메인 엔티티 구조로 변환 (기존 transformItem 로직 통합)
+   * @param {object} item - clipboard 테이블의 Row
+   * @param {object|null} imageMeta - image_meta 테이블의 Row
+   * @param {Array} tags - 태그 객체 배열
    * @returns {object}
    */
-  _mapRowToEntity(row, tags = []) {
-    const item = {
-      id: row.id,
-      type: row.type,
-      format: row.format,
-      content: row.content,
-      created_at: row.created_at,
-      is_synced: Boolean(row.is_synced),
-      is_cloud_item: Boolean(row.is_cloud_item),
-      tags: tags,
+  _mapRowToEntity(item, imageMeta = null, tags = []) {
+    let processedImageMeta = null;
+
+    const root = path.join(app.getPath("documents"), "CCD");
+
+    const makeFileUrl = (absPath) => {
+      if (!absPath) return null;
+      if (/^(https?:|data:)/i.test(absPath)) return absPath;
+      const rel = path.relative(root, absPath); // thumbnails/ 포함
+      const posix = rel.split(path.sep).join("/");
+      return `ccd://${encodeURI(posix)}`;
     };
 
-    // 이미지 메타데이터가 있는 경우 병합
-    if (row.type === "img" && row.file_path) {
-      item.meta = {
-        width: row.width,
-        height: row.height,
-        file_size: row.file_size,
-        file_path: row.file_path,
-        thumbnail_path: row.thumbnail_path,
+    if (item.type === "img" && imageMeta) {
+      const originalExists =
+        imageMeta.file_path && fs.existsSync(imageMeta.file_path);
+      const thumbExists =
+        imageMeta.thumbnail_path && fs.existsSync(imageMeta.thumbnail_path);
+
+      const originalUrl = originalExists
+        ? makeFileUrl(imageMeta.file_path)
+        : null;
+      const thumbnailUrl = thumbExists
+        ? makeFileUrl(imageMeta.thumbnail_path)
+        : originalUrl;
+
+      processedImageMeta = {
+        ...imageMeta,
+        originalUrl,
+        thumbnailUrl,
       };
     }
 
-    return item;
+    // 기존 LocalRepository.transformItem과 동일한 반환 구조
+    return {
+      id: item.id,
+      type: item.type,
+      format: item.format,
+      content: item.content,
+      created_at: item.created_at,
+      is_synced: item.is_synced,
+      is_cloud_item: item.is_cloud_item || 0,
+      tags: tags,
+      imageMeta: processedImageMeta,
+      thumbnail_path: processedImageMeta?.thumbnailUrl || null,
+    };
   }
 }
 

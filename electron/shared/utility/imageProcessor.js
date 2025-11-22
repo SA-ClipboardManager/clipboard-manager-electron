@@ -4,7 +4,7 @@
 const fs = require("fs-extra");
 const sharp = require("sharp");
 const path = require("path");
-const CCDError = require("../shared/errors/CCDError");
+const CCDError = require("../errors/CCDError");
 
 /**
  * 이미지 파일 처리 및 파일 시스템 I/O를 담당하는 유틸리티 클래스

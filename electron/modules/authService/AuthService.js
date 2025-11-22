@@ -1,64 +1,66 @@
-// modules/auth/AuthService.js (Auth Module)
-// CommonJS
-
-const { IAuthService } = require("../interfaces/IAuthService");
-const CCDError = require("../shared/errors/CCDError");
-// Electron의 안전한 저장소 사용을 가정 (예: electron-store 또는 파일 시스템)
-// const { localStore } = require("./local-store-util");
-
-const API_ENDPOINT = "YOUR_CLOUD_API_BASE_URL";
-const TOKEN_KEY = "auth_tokens";
+const axios = require("axios");
+const { IAuthService } = require("../../shared/interfaces/IAuthService");
+const CCDError = require("../../shared/errors/CCDError");
+const { tokenStorageInstance } = require("./token-storage/TokenStorage");
+const EventEmitter = require("events");
+const DEFAULT_API_BASE_URL = process.env.CLOUD_API_BASE_URL;
 
 /**
- * IAuthService 인터페이스를 구현하며, 클라우드 인증 API와 통신합니다.
  * @implements {IAuthService}
  */
-class AuthService extends IAuthService {
-  constructor() {
-      super();
-      // this.tokens = localStore.get(TOKEN_KEY) || null; // 로컬 저장소에서 초기 토큰 로드
-      this.loginState = false;
+class AuthService extends EventEmitter {
+  /**
+   * @param {TokenStorage} tokenStorage
+   * @param {{ apiBaseURL?: string }} [config]
+   */
+  constructor(tokenStorage = tokenStorageInstance, config = {}) {
+    super();
+    this.tokenStorage = tokenStorage;
+    this.apiBaseURL = config.apiBaseURL;
+    this.httpClient = axios.create({
+      baseURL: this.apiBaseURL,
+      headers: { "Content-Type": "application/json" },
+    });
+
+    // warm-up cache (비동기)
+    this.tokenStorage.load().catch((error) => {
+      console.warn("[AuthService] Failed to load tokens:", error.message);
+    });
+  }
+
+  _transformTokens(payload) {
+    if (!payload) {
+      throw new Error("Empty token payload");
+    }
+    const { access_token, refresh_token, expires_in } = payload;
+    const expiresAt = Math.floor(Date.now() / 1000) + (expires_in || 0);
+    return {
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      expiresAt,
+    };
   }
 
   /**
    * @inheritdoc
    */
-  async login(email, password) {
-    const url = `${API_ENDPOINT}/auth/login`;
-
+  async login(userId, password) {
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+      const url = "/auth/v1/api/v1/auth/login";
+
+      const response = await this.httpClient.post(url, {
+        user_id: userId,
+        password,
       });
-
-      if (!response.ok) {
-        // 401 Unauthorized 또는 다른 오류 처리
-        const errorData = await response.json();
-        throw new Error(errorData.detail || response.statusText);
-      }
-
-      const { access_token, refresh_token, expires_in } = await response.json();
-
-      // 토큰 만료 시간 계산 (현재 시간 + expires_in 초)
-      const expiresAt = Math.floor(Date.now() / 1000) + expires_in;
-
-      this.tokens = {
-        accessToken: access_token,
-        refreshToken: refresh_token,
-        expiresAt: expiresAt,
-      };
-
-      // 안전한 로컬 저장소에 토큰 저장
-      // localStore.set(TOKEN_KEY, this.tokens);
-        this.loginState = true;
-      return this.tokens;
+      const tokens = this._transformTokens(response.data);
+      await this.tokenStorage.save(tokens);
+      this.emit("login-success", userId);
+      return tokens;
     } catch (error) {
       throw CCDError.create("E501", {
         module: "AuthService",
         context: "로그인 요청 실패",
-        message: error.message,
+        message: error.response?.data?.detail || error.message,
         cause: error,
       });
     }
@@ -68,13 +70,22 @@ class AuthService extends IAuthService {
    * @inheritdoc
    */
   async logout() {
-    // 서버 측 로그아웃 엔드포인트 호출 (선택 사항, 리프레시 토큰 무효화)
-    // ...
-
-    // 로컬 저장소 및 메모리에서 토큰 제거
-    this.tokens = null;
-    // localStore.delete(TOKEN_KEY);
-    this.loginState = false;
+    const refreshToken = this.tokenStorage.getRefreshToken();
+    try {
+      if (refreshToken) {
+        await this.httpClient.post("/auth/logout", {
+          refresh_token: refreshToken,
+        });
+      }
+    } catch (error) {
+      console.warn(
+        "[AuthService] Remote logout failed:",
+        error.response?.data?.detail || error.message
+      );
+    } finally {
+      await this.tokenStorage.clear();
+      this.emit("logout-success");
+    }
     return true;
   }
 
@@ -82,26 +93,57 @@ class AuthService extends IAuthService {
    * @inheritdoc
    */
   getAuthToken() {
-    // 토큰이 만료되었는지 간단히 확인하는 로직 추가 가능
-    if (this.tokens && this.tokens.expiresAt < Math.floor(Date.now() / 1000)) {
-      console.warn("Access token expired locally.");
-      // 실제 사용 시, 여기서 refreshAccessToken()을 호출하도록 유도해야 함
+    if (this.tokenStorage.isExpired()) {
       return null;
     }
-    return this.tokens;
+    return this.tokenStorage.getTokens();
   }
 
   /**
    * @inheritdoc
    */
   async refreshAccessToken() {
-    // 리프레시 토큰을 사용하여 새로운 액세스 토큰을 받아오는 로직 구현
-    // ...
-    throw new Error("Refresh token implementation required.");
+    const refreshToken = this.tokenStorage.getRefreshToken();
+    if (!refreshToken) {
+      throw CCDError.create("E502", {
+        module: "AuthService",
+        context: "토큰 갱신 실패",
+        message: "리프레시 토큰이 없습니다.",
+      });
+    }
+
+    try {
+      const url = "/auth/v1/api/v1/auth/refresh";
+
+      const response = await this.httpClient.post(url, {
+        refresh_token: refreshToken,
+      });
+      const tokens = this._transformTokens(response.data);
+      await this.tokenStorage.save(tokens);
+      return tokens;
+    } catch (error) {
+      await this.tokenStorage.clear();
+      throw CCDError.create("E502", {
+        module: "AuthService",
+        context: "토큰 갱신 실패",
+        message: error.response?.data?.detail || error.message,
+        cause: error,
+      });
+    }
   }
 
-  getLoginState(){
-      return this.loginState;
+  /**
+   * 현재 로그인 상태를 반환합니다.
+   * @returns {Promise<{ isLoggedIn: boolean, userId?: string }>}
+   */
+  async getLoginState() {
+    const tokens = this.getAuthToken();
+    const isLoggedIn = tokens !== null && !this.tokenStorage.isExpired();
+
+    return {
+      isLoggedIn,
+      // 필요시 userId 등을 추가할 수 있습니다
+    };
   }
 }
 

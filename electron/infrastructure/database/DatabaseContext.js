@@ -1,9 +1,9 @@
-// src/infrastructure/database/DatabaseContext.js
+// infrastructure/database/DatabaseContext.js
 const path = require("path");
 const { app } = require("electron");
 const Database = require("better-sqlite3");
 const fs = require("fs-extra");
-const CCDError = require("../../../shared/errors/CCDError"); // 경로에 맞게 조정 필요
+const CCDError = require("../../shared/errors/CCDError");
 
 class DatabaseContext {
   constructor() {
