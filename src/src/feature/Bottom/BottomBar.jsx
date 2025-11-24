@@ -139,12 +139,6 @@ const BottomBar = ({ getSelectedItemIds, refetch, setItems, loginInfo }) => {
           <span className="text-xs underline">Download</span>
         </div>
       </div>
-      {/* <SettingModal
-        refetch={refetch}
-        setItems={setItems}
-        loginInfo={loginInfo}
-        onClose={() => setIsModalOpen(false)}
-      /> */}
       <div className="absolute top-[48rem] flex flex-col items-end z-50">
         {toasts.map((toast) => (
           <Toast
