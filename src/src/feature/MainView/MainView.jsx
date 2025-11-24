@@ -68,7 +68,7 @@ const MainView = ({ isTagChecked, items, toggleSelect, addItem, refetch, fileTyp
     try {
       const res = await pasteItem(id);
       if (res.paste) {
-        console.log('클립보드에 복사 성공!');
+        console.log('클립보드에 복사 성공');
       } else {
         console.warn('클립보드 복사 실패:', res.error);
       }
