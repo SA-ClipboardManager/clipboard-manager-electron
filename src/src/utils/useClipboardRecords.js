@@ -5,25 +5,27 @@ import { loadClipboardRecords, onClipboardUpdated, offClipboardUpdated, deleteIt
 const useClipboardRecords = () => {
   const [items, setItems] = useState([]);
 
-  //메인프로세스에서 전체 클립보드 기록 가져오기기
+  // 포맷 공통 함수
+  const formatItem = (item) => ({
+    ...item,
+    selected: false,
+    itemId: item.itemId ?? item.id ?? uuidv4(),
+    type: item.type === 'txt' ? 'text' : item.type === 'img' ? 'image' : item.type,
+    src: item.type === 'img' ? item.content : undefined,
+    content: item.type === 'txt' ? item.content : undefined,
+    timestamp: item.created_at ?? Date.now(),
+    fileName: item.fileName ?? 'unnamed',
+    ext: item.format?.split('/')?.[1] ?? 'unknown',
+    shared: item.shared ?? 'local',
+    tags: item.tags ?? [],
+  });
+
+  //메인프로세스에서 전체 클립보드 기록 가져오기
   const refetch = useCallback(async () => {
     try {
       const response = await loadClipboardRecords(true);
-      // console.log("📦 loadClipboardRecords 응답:", response);
       if (response.success) {
-        const formatted = response.data.map((item) => ({
-          ...item,
-          selected: false,
-          itemId: item.itemId ?? item.id ?? uuidv4(),
-          type: item.type === 'txt' ? 'text' : item.type === 'img' ? 'image' : item.type,
-          src: item.type === 'img' ? item.content : undefined,
-          content: item.type === 'txt' ? item.content : undefined,
-          timestamp: item.created_at ?? Date.now(),
-          fileName: item.fileName ?? 'unnamed',
-          ext: item.format?.split('/')?.[1] ?? 'unknown',
-          shared: item.shared ?? 'local',
-          tags: item.tags ?? [],
-        }));
+        const formatted = response.data.map(formatItem);
         setItems(formatted);
       } else {
         console.error('불러오기 실패:', response);
@@ -37,11 +39,26 @@ const useClipboardRecords = () => {
     refetch();
   }, [refetch]);
 
-  //클립보드 실시간 업데이트 데이터
+  //클립보드 실시간 업데이트 (증분 병합)
   useEffect(() => {
-    const handler = () => {
-      console.log('📥 클립보드 감지됨 → 자동 refetch()');
-      refetch();
+    const handler = (incomingItems) => {
+      // incomingItems가 없거나 비어있으면 안전하게 전체 재조회
+      if (!incomingItems || !Array.isArray(incomingItems) || incomingItems.length === 0) {
+        console.log('clipboard-updated: 빈 payload 수신, 전체 재조회 실행');
+        refetch();
+        return;
+      }
+
+      console.log('clipboard-updated 수신 → 증분 병합', incomingItems);
+      const formattedNew = incomingItems.map(formatItem);
+
+      setItems((prev) => {
+        const existingIds = new Set(prev.map((i) => i.itemId));
+        // 기존에 없는 항목만 추가 (앞쪽에 추가하여 최신 순으로 유지)
+        const toAdd = formattedNew.filter((it) => !existingIds.has(it.itemId));
+        if (toAdd.length === 0) return prev;
+        return [...toAdd, ...prev];
+      });
     };
 
     onClipboardUpdated?.(handler);
@@ -51,17 +68,17 @@ const useClipboardRecords = () => {
   }, [refetch]);
 
   useEffect(() => {
-    console.log('🧾 현재 items 상태:', items);
+    console.log('현재 items 상태:', items);
   }, [items]);
 
   const toggleSelect = (itemId) => {
-    console.log('현재 선택된 item!!: ', itemId);
+    console.log('현재 선택된 item: ', itemId);
     setItems((prev) => prev.map((item) => (item.itemId === itemId ? { ...item, selected: !item.selected } : item)));
   };
 
   //  드래그앤드랍으로 받은 아이템 추가
   const addItem = (newItem) => {
-    console.log('neneenwitem: ', newItem);
+    console.log('newitem: ', newItem);
     const itemId = newItem.itemId ?? uuidv4();
 
     setItems((prev) => {

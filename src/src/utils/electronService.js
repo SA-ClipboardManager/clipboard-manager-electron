@@ -2,14 +2,6 @@ export const closeWindow = () => {
   return window.electronAPI?.closeWindow?.();
 };
 
-// export const getSettings = async () => {
-//   return window.electronAPI?.getSettings?.();
-// };
-
-// export const updateSettings = async (settings) => {
-//   return window.electronAPI?.updateSettings?.(settings);
-// };
-
 export const loadClipboardRecords = async (opts) => {
   return window.electronAPI?.loadClipboardRecords?.(opts);
 };

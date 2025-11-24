@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import './styles/color.css';
 import './styles/typography.css';
 
+import closeUrl from '../assets/X.svg';
+
 import BottomBar from './feature/Bottom/BottomBar';
 import SearchBar from './feature/Search/SearchBar';
 import FilterBar from './feature/Filter/FilterBar';
@@ -65,7 +67,7 @@ const App = () => {
           {/* 닫기 버튼  */}
           <div className="absolute z-50 right-8 top-5">
             <img
-              src="X.svg"
+              src={closeUrl}
               alt="닫기 버튼 "
               style={{ WebkitAppRegion: 'no-drag' }}
               onClick={() => closeWindow()}
