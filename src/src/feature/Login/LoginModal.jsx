@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { twMerge } from 'tailwind-merge';
-
 import '../../styles/color.css';
+
+import avatarUrl from '../../../assets/avatar.svg';
+
 import useDisableDuringSubmit from '../../utils/useDisableDuringSubmit.js';
 import { loginUser, logoutUser, registerUser } from '../../utils/electronService.js';
 
@@ -170,7 +172,7 @@ const LoginModal = ({ loginInfo, setLoginInfo }) => {
     >
       {/* 아바타 */}
       <img
-        src="/avatar.svg"
+        src={avatarUrl}
         alt="User Avatar"
         ref={avatarRef}
         className="ml-3 w-[5.3rem] h-[5.3rem]  cursor-pointer object-cover"
@@ -192,8 +194,8 @@ const LoginModal = ({ loginInfo, setLoginInfo }) => {
         <div
           ref={ref}
           className="absolute  flex flex-col
-           right-0 mt-2 min-w-[14.2rem] min-h-[15.5rem] bg-white rounded-xl   
-           shadow-[0_0.1rem_2.5rem_0_rgba(0,0,0,0.10)]
+            right-0 mt-2 min-w-[14.2rem] min-h-[15.5rem] bg-white rounded-xl   
+            shadow-[0_0.1rem_2.5rem_0_rgba(0,0,0,0.10)]
             p-4 z-10"
           style={{ WebkitAppRegion: 'no-drag' }} // 클릭 이벤트 허용
         >
@@ -323,14 +325,14 @@ const LoginModal = ({ loginInfo, setLoginInfo }) => {
 
               <div
                 className="
-                   text-center
-                   text-center
-                   !font-inter
-                   text-[0.9rem]
-                   font-[var( --font-rg)]
-                   leading-normal
-                   text-[var(--red)]
-                   mt-[1rem]
+                  text-center
+                  text-center
+                  !font-inter
+                  text-[0.9rem]
+                  font-[var( --font-rg)]
+                  leading-normal
+                  text-[var(--red)]
+                  mt-[1rem]
                   "
               >
                 {(loginError || loginSuccess) && (
@@ -408,8 +410,8 @@ const LoginModal = ({ loginInfo, setLoginInfo }) => {
               </div>
               <div
                 className="flex justify-center text-center 
-                             text-[1.1rem] font-[var(--font-rg)] leading-normal 
-                             text-[var(--red)] underline cursor-pointer pb-[1.6rem]"
+                  text-[1.1rem] font-[var(--font-rg)] leading-normal 
+                  text-[var(--red)] underline cursor-pointer pb-[1.6rem]"
                 onClick={handleLogout}
               >
                 Logout

@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import clsx from 'clsx';
 import '../../styles/color.css';
 
+import searchUrl from '../../../assets/search.svg';
+
 import useDisableDuringSubmit from '../../utils/useDisableDuringSubmit';
 import LoginModal from '../Login/LoginModal';
 import { searchKeyword } from '../../utils/electronService';
@@ -72,7 +74,7 @@ const SearchBar = ({ setItemsFromSearchResult, refetch, loginInfo, setLoginInfo 
           <img
             className=""
             alt="search-icon"
-            src="search.svg"
+            src={searchUrl}
           />
           <input
             type="text"
