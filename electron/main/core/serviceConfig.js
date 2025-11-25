@@ -9,7 +9,7 @@ const { CloudService } = require("../../modules/cloud/CloudService");
 const {
   ClipboardService,
 } = require("../../modules/clipboard/ClipboardService");
-const EtcService = require("../../modules/etc/EtcService");
+const EtcService = require("../../modules/notify/notifyService");
 require("dotenv").config();
 
 class serviceConfig {

@@ -24,7 +24,7 @@ class AppContainer {
   static initializeModules() {
     const AuthModule = require('../../modules/authService/AuthModule');
     // const SearchModule = require("../../modules/search/SearchModule");
-    const EtcModule = require('../../modules/etc/etcModule.js');
+    const EtcModule = require('../../modules/notify/notifyModule.js');
     const ClipboardModule = require('../../modules/clipboard/ClipboardModule');
     const CloudModule = require('../../modules/cloud/CloudModule');
 
