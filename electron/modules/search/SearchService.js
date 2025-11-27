@@ -15,7 +15,6 @@ class SearchService {
     }
 
     async keywordLocalSearch(query, options = {}) {
-        console.log("keywordLocalSearch");
         try {
             const localIds = await this.clipboardRepository.search(query, options);
             await this.reloadCache();
@@ -37,7 +36,6 @@ class SearchService {
                 return text.includes(lowerQuery) || tags.includes(lowerQuery);
 
             });
-            console.log("before return");
             return this.mergeItems(localResults, cloudResults);
         } catch (error) {
             throw CCDError.create("E610", {

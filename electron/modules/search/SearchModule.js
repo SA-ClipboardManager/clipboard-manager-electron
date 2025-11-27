@@ -20,18 +20,20 @@ class SearchModule extends BaseModule{
                     console.error(err);
                     return err.toJSON();
                 }
-                console.log("In search-keyword");
                 let resultItems = [];
                 //TODO Cloud에서만 검색 여부 + ui에서 넘겨주는 인자 변경
                 if(model === "local_mobilenet"){
-                    console.log("In if");
+                    console.log("SearchModule_local_mobilenet");
                     resultItems = await this.service.keywordLocalSearch(keyword);
                 }
                 else if(model === "cloud_mobilenet"){
+                    console.log("SearchModule_cloud_mobilenet");
                     resultItems = await this.service.keywordCloudSearch(keyword);
                 }else if(model === "both_mobilenet"){
+                    console.log("SearchModule_both_mobilenet");
                     resultItems = await this.service.keywordLocalCloudSearch(keyword);
                 }else if(model === "clip"){
+                    console.log("SearchModule_clip");
                     resultItems = await this.service.vectorCloudSearch(keyword);
                 }
                 return {success: true, data: resultItems};
