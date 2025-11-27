@@ -38,9 +38,10 @@ class ClipboardModule extends BaseModule {
         const savedItem = await this.service.saveFromListener(payload);
 
         // EtcService가 있으면 렌더러에 변경사항(증분)을 알림
-        if (this.services && this.services.EtcService && savedItem) {
+        if (this.services && this.services.NotifyService && savedItem) {
           // notifyItemSaved은 배열을 받는 것으로 되어 있으므로 배열로 전달
-          this.services.EtcService.notifyItemSaved([savedItem]);
+            //TODO EventEmitter로 변경
+          this.services.NotifyService.notifyItemSaved([savedItem]);
         }
       } catch (error) {
         console.error('[ClipboardModule] Failed to handle clipboard change:', error);

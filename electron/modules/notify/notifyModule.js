@@ -5,7 +5,7 @@ const CCDError = require("../../shared/errors/CCDError");
 class NotifyModule extends BaseModule {
   constructor(services) {
     super(services, "etc");
-    this.service = services.EtcService;
+    this.service = services.NotifyService;
   }
 
   registerIpcHandler(ipcMain) {
