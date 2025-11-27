@@ -5,7 +5,7 @@ const { Buffer } = require("buffer");
 const crypto = require("crypto");
 const CCDError = require("../../shared/errors/CCDError");
 
-class EtcService {
+class NotifyService {
   /**
    * @param {import('../../infrastructure/repositories/ClipboardRepository')} clipboardRepository
    * @param {import('../clipboard/ClipboardService').ClipboardService} clipboardService
@@ -91,4 +91,4 @@ class EtcService {
   }
 }
 
-module.exports = EtcService;
+module.exports = NotifyService;

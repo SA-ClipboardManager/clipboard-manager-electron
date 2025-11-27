@@ -9,7 +9,8 @@ const { CloudService } = require("../../modules/cloud/CloudService");
 const {
   ClipboardService,
 } = require("../../modules/clipboard/ClipboardService");
-const EtcService = require("../../modules/etc/EtcService");
+const NotifyService = require("../../modules/notify/notifyService");
+const SearchService = require("../../modules/search/SearchService")
 require("dotenv").config();
 
 class serviceConfig {
@@ -65,14 +66,17 @@ class serviceConfig {
 
     const clipboardService = new ClipboardService(clipboardRepo);
 
-    const etcService = new EtcService(clipboardRepo, clipboardService);
+    const notifyService = new NotifyService(clipboardRepo, clipboardService);
+    const searchService = new SearchService(clipboardRepo,
+        cloudService.axiosInstance);//인증 & 갱신 포함된 axios 주입
 
     this.services = {
-      TokenStorage: tokenStorage,
-      AuthService: authService,
-      CloudService: cloudService,
-      ClipboardService: clipboardService,
-      EtcService: etcService,
+        TokenStorage: tokenStorage,
+        AuthService: authService,
+        CloudService: cloudService,
+        ClipboardService: clipboardService,
+        NotifyService: notifyService,
+        SearchService: searchService,
     };
 
     console.log("[serviceConfig] Services initialized.");

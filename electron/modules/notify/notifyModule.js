@@ -2,10 +2,10 @@ const BaseModule = require("../../main/core/BaseModule");
 const CCDError = require("../../shared/errors/CCDError");
 
 //TODO name 수정
-class EtcModule extends BaseModule {
+class NotifyModule extends BaseModule {
   constructor(services) {
     super(services, "etc");
-    this.service = services.EtcService;
+    this.service = services.NotifyService;
   }
 
   registerIpcHandler(ipcMain) {
@@ -44,4 +44,4 @@ class EtcModule extends BaseModule {
   }
 }
 
-module.exports = EtcModule;
+module.exports = NotifyModule;

@@ -136,6 +136,16 @@ class ClipboardRepository {
       console.error(`[Repo] 썸네일 재생성 실패: ${id}`, err);
     }
   }
+
+    /**
+     * Search Service 용
+     */
+
+    getAllClipboardWithMetaAndTags(){
+        return this.reader.getAllClipboardWithMetaAndTags();
+    }
+
+
 }
 
 module.exports = ClipboardRepository;

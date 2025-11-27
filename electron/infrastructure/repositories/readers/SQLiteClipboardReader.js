@@ -235,6 +235,23 @@ class SQLiteClipboardReader {
     }
   }
 
+    /**
+     *
+     * searchService 용
+     */
+  getAllClipboardWithMetaAndTags() {
+    const stmt = this.db.prepare(`
+      SELECT c.*, im.*, GROUP_CONCAT(t.name) as tag_names
+      FROM clipboard c
+      LEFT JOIN image_meta im ON c.id = im.data_id
+      LEFT JOIN data_tag dt ON c.id = dt.data_id
+      LEFT JOIN tag t ON dt.tag_id = t.tag_id
+      GROUP BY c.id
+    `);
+    return stmt.all();
+  }
+
+
   // =================================================================
   // Private Helper Methods
   // =================================================================

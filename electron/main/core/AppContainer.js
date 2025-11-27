@@ -23,8 +23,8 @@ class AppContainer {
 
   static initializeModules() {
     const AuthModule = require('../../modules/authService/AuthModule');
-    // const SearchModule = require("../../modules/search/SearchModule");
-    const EtcModule = require('../../modules/etc/etcModule.js');
+    const SearchModule = require("../../modules/search/SearchModule");
+    const NotifyModule = require('../../modules/notify/notifyModule.js');
     const ClipboardModule = require('../../modules/clipboard/ClipboardModule');
     const CloudModule = require('../../modules/cloud/CloudModule');
 
@@ -32,8 +32,8 @@ class AppContainer {
       new AuthModule(this.services),
       new CloudModule(this.services),
       new ClipboardModule(this.services),
-      // new SearchModule(this.services),
-      new EtcModule(this.services),
+      new SearchModule(this.services),
+      new NotifyModule(this.services),
     ];
   }
 
