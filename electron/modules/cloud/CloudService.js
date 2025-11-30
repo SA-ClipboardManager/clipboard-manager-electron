@@ -4,6 +4,7 @@ const FormData = require("form-data");
 const { app } = require("electron");
 const { EventEmitter } = require("events");
 const CCDError = require("../../shared/errors/CCDError");
+const CorrelationId = require("../../shared/utility/CorrelationId");
 
 class CloudService extends EventEmitter {
   /**
@@ -66,8 +67,14 @@ class CloudService extends EventEmitter {
    * [UI 호출] 사용자 업로드 요청 (Outbox에 이벤트만 등록)
    */
   async requestUpload(itemId, isPriority = false) {
+    const correlationId = CorrelationId.generate();
     try {
-      console.log(`[CloudService] Requesting upload for item: ${itemId}`);
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Requesting upload for item: ${itemId}`
+        )
+      );
 
       const item = await this.clipboardRepo.getById(itemId);
       if (!item) {
@@ -75,11 +82,24 @@ class CloudService extends EventEmitter {
       }
 
       // Outbox에 'UPLOAD' 이벤트 큐잉 (실제 수행은 SyncCoordinator가 담당)
-      this.outboxRepo.createEvent(itemId, "UPLOAD", { isPriority });
+      this.outboxRepo.createEvent(itemId, "UPLOAD", {
+        isPriority,
+        correlationId,
+      });
 
-      console.log(`[CloudService] Upload event queued for ${itemId}`);
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Upload event queued for ${itemId}`
+        )
+      );
     } catch (error) {
-      console.error("[CloudService] Failed to queue upload request:", error);
+      console.error(
+        CorrelationId.formatLog(
+          correlationId,
+          `Failed to queue upload: ${error.message}`
+        )
+      );
       throw CCDError.create("E700", {
         module: "CloudService",
         context: "requestUpload",
@@ -92,12 +112,20 @@ class CloudService extends EventEmitter {
    * [SyncCoordinator 호출] 실제 서버 업로드 수행
    */
   async uploadItem(outboxItem) {
+    const correlationId =
+      outboxItem.metadata?.correlationId || CorrelationId.generate();
+
     const item = await this.clipboardRepo.getById(outboxItem.data_id);
     if (!item) {
       throw new Error(`Item with ID ${outboxItem.data_id} not found locally.`);
     }
 
-    console.log(`[CloudService] Uploading item ${item.id} to server...`);
+    console.log(
+      CorrelationId.formatLog(
+        correlationId,
+        `Uploading item ${item.id} to server...`
+      )
+    );
 
     const formData = new FormData();
     formData.append("id", item.id);
@@ -125,20 +153,27 @@ class CloudService extends EventEmitter {
       "/api/v1/clipboard",
       formData,
       {
-        headers: { ...formData.getHeaders() },
+        headers: {
+          ...formData.getHeaders(),
+          [CorrelationId.HEADER_NAME]: correlationId,
+        },
         timeout: 60000, // 대용량 업로드 고려 60초
       }
     );
 
-    console.log(`[CloudService] Upload successful: ${item.id}`);
+    console.log(
+      CorrelationId.formatLog(correlationId, `Upload successful: ${item.id}`)
+    );
 
     // 로컬 DB 상태 갱신 (is_synced / is_cloud_item)
     try {
       this.clipboardRepo.markAsSynced(item.id);
     } catch (e) {
       console.warn(
-        `[CloudService] Failed to mark item as synced: ${item.id}`,
-        e.message
+        CorrelationId.formatLog(
+          correlationId,
+          `Failed to mark item as synced: ${item.id} - ${e.message}`
+        )
       );
     }
 
@@ -151,21 +186,33 @@ class CloudService extends EventEmitter {
    * [초기 동기화] 서버 메타데이터 조회 및 로컬 동기화
    */
   async fetchAndSyncMetadata() {
-    console.log("[CloudService] Fetching metadata from cloud...");
+    const correlationId = CorrelationId.generate();
+    console.log(
+      CorrelationId.formatLog(correlationId, "Fetching metadata from cloud...")
+    );
 
     // GET /api/v1/clipboard (페이징 없이 전체 혹은 최근 항목 조회라 가정)
-    const response = await this.uploadClient.get("/api/v1/clipboard");
+    const response = await this.uploadClient.get("/api/v1/clipboard", {
+      headers: {
+        [CorrelationId.HEADER_NAME]: correlationId,
+      },
+    });
     const cloudItems = response.data;
 
     if (!Array.isArray(cloudItems) || cloudItems.length === 0) {
-      console.log("[CloudService] No items found in cloud.");
+      console.log(
+        CorrelationId.formatLog(correlationId, "No items found in cloud.")
+      );
       // 초기 동기화 완료 이벤트 (항목 0)
       this.emit("initial-sync-complete", { total: 0, synced: 0 });
       return;
     }
 
     console.log(
-      `[CloudService] Received ${cloudItems.length} items. Syncing...`
+      CorrelationId.formatLog(
+        correlationId,
+        `Received ${cloudItems.length} items. Syncing...`
+      )
     );
 
     // 폴더 확보
@@ -174,17 +221,22 @@ class CloudService extends EventEmitter {
     let syncCount = 0;
     for (const remoteItem of cloudItems) {
       try {
-        await this._saveRemoteItemToLocal(remoteItem);
+        await this._saveRemoteItemToLocal(remoteItem, correlationId);
         syncCount++;
       } catch (err) {
         console.error(
-          `[CloudService] Failed to sync item ${remoteItem.id}:`,
-          err
+          CorrelationId.formatLog(
+            correlationId,
+            `Failed to sync item ${remoteItem.id}: ${err.message}`
+          )
         );
       }
     }
     console.log(
-      `[CloudService] Sync completed. (${syncCount}/${cloudItems.length})`
+      CorrelationId.formatLog(
+        correlationId,
+        `Sync completed. (${syncCount}/${cloudItems.length})`
+      )
     );
     // 초기 동기화 완료 이벤트 발생
     this.emit("initial-sync-complete", {
@@ -198,6 +250,7 @@ class CloudService extends EventEmitter {
    * @returns {Promise<string>} 로컬 파일 경로
    */
   async downloadOriginalImage(itemId) {
+    const correlationId = CorrelationId.generate();
     const item = await this.clipboardRepo.getById(itemId);
 
     // 1. 이미 원본이 있으면 그 경로 반환
@@ -210,13 +263,22 @@ class CloudService extends EventEmitter {
     }
 
     // 2. 다운로드 URL 확보 (API 호출 예시)
-    console.log(`[CloudService] Downloading original image for ${itemId}...`);
+    console.log(
+      CorrelationId.formatLog(
+        correlationId,
+        `Downloading original image for ${itemId}...`
+      )
+    );
     // API: GET /api/v1/clipboard/{id}/download (리다이렉트되거나 URL 반환)
     // 여기서는 스트림을 직접 받는다고 가정
     const downloadUrl = `/api/v1/clipboard/${itemId}/download`;
 
     const filename = `original_${itemId}.${item.format || "png"}`;
-    const localPath = await this._downloadImage(downloadUrl, filename);
+    const localPath = await this._downloadImage(
+      downloadUrl,
+      filename,
+      correlationId
+    );
 
     // 3. 로컬 DB 업데이트 (file_path 채우기)
     // ClipboardRepository에 updateImagePaths 메서드가 필요합니다.
@@ -232,7 +294,7 @@ class CloudService extends EventEmitter {
   /**
    * 서버 아이템을 로컬 DB 구조로 변환 후 저장 (썸네일 다운로드 포함)
    */
-  async _saveRemoteItemToLocal(remoteItem) {
+  async _saveRemoteItemToLocal(remoteItem, correlationId) {
     // Unix timestamp 변환 (서버가 ISO string을 준다고 가정)
     const createdAt = new Date(remoteItem.created_at).getTime() / 1000;
 
@@ -258,11 +320,17 @@ class CloudService extends EventEmitter {
             ? remoteItem.image_meta.thumbnail_url
             : `${this.apiBaseURL}${remoteItem.image_meta.thumbnail_url}`;
 
-          localThumbnailPath = await this._downloadImage(url, filename);
+          localThumbnailPath = await this._downloadImage(
+            url,
+            filename,
+            correlationId
+          );
         } catch (e) {
           console.warn(
-            `[CloudService] Thumbnail download failed for ${remoteItem.id}`,
-            e
+            CorrelationId.formatLog(
+              correlationId,
+              `Thumbnail download failed for ${remoteItem.id}: ${e.message}`
+            )
           );
         }
       }
@@ -284,7 +352,7 @@ class CloudService extends EventEmitter {
   /**
    * 이미지 파일 다운로드 유틸리티
    */
-  async _downloadImage(urlOrPath, filename) {
+  async _downloadImage(urlOrPath, filename, correlationId) {
     const localPath = path.join(this.imagesDir, filename);
 
     // 캐싱: 이미 존재하면 다운로드 스킵
@@ -294,6 +362,9 @@ class CloudService extends EventEmitter {
 
     const response = await this.uploadClient.get(urlOrPath, {
       responseType: "stream",
+      headers: {
+        [CorrelationId.HEADER_NAME]: correlationId || CorrelationId.generate(),
+      },
     });
 
     const writer = fs.createWriteStream(localPath);

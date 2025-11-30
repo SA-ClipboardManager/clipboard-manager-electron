@@ -1,5 +1,6 @@
 const EventEmitter = require("events");
 const WebSocket = require("ws");
+const CorrelationId = require("../../shared/utility/CorrelationId");
 
 class WebSocketManager extends EventEmitter {
   constructor(apiBaseURL) {
@@ -20,17 +21,21 @@ class WebSocketManager extends EventEmitter {
   connect(userId, token) {
     this.userId = userId;
     this.token = token;
+    const correlationId = CorrelationId.generate();
     const url = `${this.apiBaseURL}/ws/${userId}`;
 
-    console.log(`[WebSocketManager] Connecting to ${url}`);
+    console.log(CorrelationId.formatLog(correlationId, `Connecting to ${url}`));
     this.ws = new WebSocket(url, {
       headers: {
         Authorization: `Bearer ${token}`,
+        [CorrelationId.HEADER_NAME]: correlationId,
       },
     });
 
     this.ws.on("open", () => {
-      console.log("[WebSocketManager] Connected");
+      console.log(
+        CorrelationId.formatLog(correlationId, "WebSocket Connected")
+      );
       this.emit("connected");
       this._setupHeartbeat();
     });
@@ -45,14 +50,21 @@ class WebSocketManager extends EventEmitter {
     });
 
     this.ws.on("close", () => {
-      console.log("[WebSocketManager] Disconnected");
+      console.log(
+        CorrelationId.formatLog(correlationId, "WebSocket Disconnected")
+      );
       this.emit("disconnected");
       this._clearHeartbeat();
       this._setupReconnect();
     });
 
     this.ws.on("error", (error) => {
-      console.error("[WebSocketManager] Error:", error);
+      console.error(
+        CorrelationId.formatLog(
+          correlationId,
+          `WebSocket Error: ${error.message}`
+        )
+      );
       this.emit("error", error);
     });
   }
@@ -75,10 +87,21 @@ class WebSocketManager extends EventEmitter {
   /**
    * 메시지 전송
    * @param {Object} message
+   * @param {string} [correlationId] - 선택적 correlation ID (없으면 자동 생성)
    */
-  send(message) {
+  send(message, correlationId) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+      const cid = correlationId || CorrelationId.generate();
+      const messageWithCid = {
+        ...message,
+        [CorrelationId.WS_FIELD_NAME]: cid,
+      };
+
+      console.log(
+        CorrelationId.formatLog(cid, `Sending WS message: ${message.type}`)
+      );
+
+      this.ws.send(JSON.stringify(messageWithCid));
     } else {
       console.warn("[WebSocketManager] WebSocket not open");
     }
@@ -129,7 +152,13 @@ class WebSocketManager extends EventEmitter {
    * 메시지 처리 (private)
    */
   _handleMessage(message) {
-    console.log("[WebSocketManager] Received:", message);
+    const correlationId = message[CorrelationId.WS_FIELD_NAME];
+    console.log(
+      CorrelationId.formatLog(
+        correlationId,
+        `Received WS message: ${message.type}`
+      )
+    );
 
     switch (message.type) {
       case "pong":

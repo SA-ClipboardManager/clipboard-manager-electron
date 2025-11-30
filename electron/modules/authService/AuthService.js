@@ -3,6 +3,7 @@ const { IAuthService } = require("../../shared/interfaces/IAuthService");
 const CCDError = require("../../shared/errors/CCDError");
 const { tokenStorageInstance } = require("./token-storage/TokenStorage");
 const EventEmitter = require("events");
+const CorrelationId = require("../../shared/utility/CorrelationId");
 const DEFAULT_API_BASE_URL = process.env.CLOUD_API_BASE_URL;
 
 /**
@@ -45,18 +46,44 @@ class AuthService extends EventEmitter {
    * @inheritdoc
    */
   async login(userId, password) {
+    const correlationId = CorrelationId.generate();
     try {
       const url = "/api/v1/auth/login";
 
-      const response = await this.httpClient.post(url, {
-        user_id: userId,
-        password,
-      });
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Login attempt for user: ${userId}`
+        )
+      );
+
+      const response = await this.httpClient.post(
+        url,
+        {
+          user_id: userId,
+          password,
+        },
+        {
+          headers: {
+            [CorrelationId.HEADER_NAME]: correlationId,
+          },
+        }
+      );
       const tokens = this._transformTokens(response.data);
       await this.tokenStorage.save(tokens);
+
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Login successful for user: ${userId}`
+        )
+      );
       this.emit("login-success", userId);
       return tokens;
     } catch (error) {
+      console.error(
+        CorrelationId.formatLog(correlationId, `Login failed: ${error.message}`)
+      );
       throw CCDError.create("E501", {
         module: "AuthService",
         context: "로그인 요청 실패",
@@ -72,20 +99,48 @@ class AuthService extends EventEmitter {
    * @returns {Promise<{joinResultMsg: string}>}
    */
   async register(userId, password) {
+    const correlationId = CorrelationId.generate();
     try {
       const url = "/api/v1/auth/register";
 
-      const response = await this.httpClient.post(url, {
-        user_id: userId,
-        password,
-      });
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Register attempt for user: ${userId}`
+        )
+      );
+
+      const response = await this.httpClient.post(
+        url,
+        {
+          user_id: userId,
+          password,
+        },
+        {
+          headers: {
+            [CorrelationId.HEADER_NAME]: correlationId,
+          },
+        }
+      );
 
       if (response.data && response.data.message) {
+        console.log(
+          CorrelationId.formatLog(
+            correlationId,
+            `Registration successful for user: ${userId}`
+          )
+        );
         return { joinResultMsg: response.data.message };
       }
 
       return { joinResultMsg: "success" };
     } catch (error) {
+      console.error(
+        CorrelationId.formatLog(
+          correlationId,
+          `Registration failed: ${error.message}`
+        )
+      );
       if (error.response && error.response.status === 409) {
         return { joinResultMsg: "duplication" };
       }
@@ -102,17 +157,34 @@ class AuthService extends EventEmitter {
    * @inheritdoc
    */
   async logout() {
+    const correlationId = CorrelationId.generate();
     const refreshToken = this.tokenStorage.getRefreshToken();
     try {
       if (refreshToken) {
-        await this.httpClient.post("/api/v1/auth/logout", {
-          refresh_token: refreshToken,
-        });
+        console.log(CorrelationId.formatLog(correlationId, "Logout request"));
+        await this.httpClient.post(
+          "/api/v1/auth/logout",
+          {
+            refresh_token: refreshToken,
+          },
+          {
+            headers: {
+              [CorrelationId.HEADER_NAME]: correlationId,
+            },
+          }
+        );
+        console.log(
+          CorrelationId.formatLog(correlationId, "Logout successful")
+        );
       }
     } catch (error) {
       console.warn(
-        "[AuthService] Remote logout failed:",
-        error.response?.data?.detail || error.message
+        CorrelationId.formatLog(
+          correlationId,
+          `Remote logout failed: ${
+            error.response?.data?.detail || error.message
+          }`
+        )
       );
     } finally {
       await this.tokenStorage.clear();
@@ -144,6 +216,7 @@ class AuthService extends EventEmitter {
    * @inheritdoc
    */
   async refreshAccessToken() {
+    const correlationId = CorrelationId.generate();
     const refreshToken = this.tokenStorage.getRefreshToken();
     if (!refreshToken) {
       throw CCDError.create("E502", {
@@ -156,13 +229,35 @@ class AuthService extends EventEmitter {
     try {
       const url = "/api/v1/auth/refresh";
 
-      const response = await this.httpClient.post(url, {
-        refresh_token: refreshToken,
-      });
+      console.log(
+        CorrelationId.formatLog(correlationId, "Refreshing access token")
+      );
+
+      const response = await this.httpClient.post(
+        url,
+        {
+          refresh_token: refreshToken,
+        },
+        {
+          headers: {
+            [CorrelationId.HEADER_NAME]: correlationId,
+          },
+        }
+      );
       const tokens = this._transformTokens(response.data);
       await this.tokenStorage.save(tokens);
+
+      console.log(
+        CorrelationId.formatLog(correlationId, "Token refresh successful")
+      );
       return tokens;
     } catch (error) {
+      console.error(
+        CorrelationId.formatLog(
+          correlationId,
+          `Token refresh failed: ${error.message}`
+        )
+      );
       await this.tokenStorage.clear();
       throw CCDError.create("E502", {
         module: "AuthService",
