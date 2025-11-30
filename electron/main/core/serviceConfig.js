@@ -1,15 +1,21 @@
 const DatabaseContext = require("../../infrastructure/database/DatabaseContext");
 const ClipboardRepository = require("../../infrastructure/repositories/ClipboardRepository");
-const SyncRepository = require("../../infrastructure/repositories/SyncRepository");
+const OutboxRepository = require("../../infrastructure/repositories/OutboxRepository");
 const {
   TokenStorage,
 } = require("../../modules/authService/token-storage/TokenStorage");
 const { AuthService } = require("../../modules/authService/AuthService");
-const { CloudService } = require("../../modules/cloud/CloudService");
 const {
   ClipboardService,
 } = require("../../modules/clipboard/ClipboardService");
-const EtcService = require("../../modules/etc/EtcService");
+const EtcService = require("../../modules/notify/notifyService");
+const CloudService = require("../../modules/cloud/CloudService");
+const WebSocketManager = require("../../modules/cloud/WebSocketManager");
+const SyncCoordinator = require("../../modules/cloud/SyncCoordinator");
+const {
+  createAuthenticatedHttpClient,
+} = require("../../shared/utility/HttpClient");
+// const SearchService = require("../../modules/search/SearchService");
 require("dotenv").config();
 
 class serviceConfig {
@@ -19,68 +25,82 @@ class serviceConfig {
     this.services = {};
   }
 
-  /**
-   * DB 초기화
-   */
   initializeInfrastructure() {
-    // DB Context 초기화 (Singleton)
     const dbContext = new DatabaseContext();
     dbContext.initialize();
-
     this.infrastructure.dbContext = dbContext;
     console.log("[serviceConfig] Infrastructure initialized.");
   }
 
-  /**
-   *리포지토리 초기화 (DB Context 주입)
-   */
   initializeRepositories() {
     const { dbContext } = this.infrastructure;
 
-    // 도메인별 리포지토리 분리 생성
+    this.repositories.outboxRepo = new OutboxRepository(dbContext.getDb());
+
     this.repositories.clipboardRepo = new ClipboardRepository(dbContext);
-    this.repositories.syncRepo = new SyncRepository(dbContext);
 
     console.log("[serviceConfig] Repositories initialized.");
   }
 
-  /**
-   * 서비스 초기화 (리포지토리 및 타 서비스 주입)
-   */
   initializeServices() {
-    const { clipboardRepo, syncRepo } = this.repositories;
+    // 1. 필요한 리포지토리 및 환경변수 준비
+    const { clipboardRepo, outboxRepo } = this.repositories; // outboxRepo 꺼내기
     const apiBaseURL = process.env.CLOUD_API_BASE_URL;
-    console.log("⭐⭐⭐⭐");
-    console.log(apiBaseURL);
 
+    // 2. 기초 서비스 생성
     const tokenStorage = new TokenStorage();
-
     const authService = new AuthService(tokenStorage, { apiBaseURL });
+    const webSocketManager = new WebSocketManager(apiBaseURL);
 
-    const cloudService = new CloudService(syncRepo, {
+    const uploadClient = createAuthenticatedHttpClient(apiBaseURL, {
       tokenStorage,
       authService,
-      apiBaseURL,
     });
 
-    const clipboardService = new ClipboardService(clipboardRepo);
+    // 3. CloudService 생성
+    const cloudService = new CloudService({
+      outboxRepo: outboxRepo,
+      clipboardRepo: clipboardRepo,
+      wsManager: webSocketManager,
+      authService: authService,
+      uploadClient: uploadClient,
+      apiBaseURL: apiBaseURL,
+    });
 
-    const etcService = new EtcService(clipboardRepo, clipboardService);
+    // 4. SyncCoordinator 생성 및 시작 (백그라운드 업로더)
+    const syncCoordinator = new SyncCoordinator({
+      outboxRepo: outboxRepo,
+      cloudService: cloudService,
+    });
 
+    // 앱 시작과 동시에 백그라운드 동기화 루프 시작
+    syncCoordinator.start();
+
+    // 5. ClipboardService 생성
+    // (이제 cloudService가 정의되었으므로 안전하게 주입 가능)
+    const clipboardService = new ClipboardService(clipboardRepo, cloudService);
+    const etcService = new EtcService(
+      clipboardRepo,
+      clipboardService,
+      syncCoordinator
+    );
+
+    // 6. 서비스 등록
     this.services = {
       TokenStorage: tokenStorage,
       AuthService: authService,
-      CloudService: cloudService,
       ClipboardService: clipboardService,
+      CloudService: cloudService,
+      WebSocketManager: webSocketManager,
+      SyncCoordinator: syncCoordinator, // 서비스 목록에 추가
       EtcService: etcService,
     };
 
-    console.log("[serviceConfig] Services initialized.");
+    console.log(
+      "[serviceConfig] Services initialized & SyncCoordinator started."
+    );
   }
 
-  /**
-   *
-   */
   getServices() {
     return this.services;
   }

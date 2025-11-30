@@ -1,69 +1,48 @@
-const fs = require("fs-extra");
-const SQLiteClipboardReader = require("./readers/SQLiteClipboardReader");
-const SQLiteUnitOfWork = require("../uow/SQLiteUnitOfWork");
+// electron/infrastructure/repositories/ClipboardRepository.js
 const CCDError = require("../../shared/errors/CCDError");
+const fs = require("fs-extra");
 const ImageProcessor = require("../../shared/utility/imageProcessor");
+const IClipboardRepository = require("../../shared/interfaces/IClipboardRepository");
+const crypto = require("crypto");
 
+/**
+ * Implementation of IClipboardRepository for managing clipboard items
+ * @implements {IClipboardRepository}
+ */
 class ClipboardRepository {
   /**
    * @param {import('../database/DatabaseContext')} dbContext
    */
   constructor(dbContext) {
     this.db = dbContext.getDb();
-    this.reader = new SQLiteClipboardReader(this.db);
-    this.uow = new SQLiteUnitOfWork(dbContext);
     this.imageProcessor = new ImageProcessor();
   }
 
   /**
-   * 클립보드 항목 저장 (트랜잭션 처리)
-   * @param {object} item
-   * @param {object} [meta]
-   */
-  async save(item, meta) {
-    try {
-      return this.uow.execute((ctx) => {
-        // Writer를 통해 DB 저장
-        return ctx.clipboard.save(item, meta);
-      });
-    } catch (error) {
-      throw CCDError.create("E610", {
-        module: "ClipboardRepository",
-        context: "save",
-        message: error.message,
-        cause: error,
-      });
-    }
-  }
-
-  /**
-   * ID로 항목 단건 조회
+   * Get clipboard item by ID
    * @param {string} id
+   * @returns {object|null}
    */
   getById(id) {
     try {
-      const item = this.reader.getClipboardItem(id);
-      if (!item) return null;
+      const stmt = this.db.prepare(`
+        SELECT 
+          c.*, 
+          im.width, im.height, im.file_size, im.file_path, im.thumbnail_path
+        FROM clipboard c
+        LEFT JOIN image_meta im ON c.id = im.data_id
+        WHERE c.id = ?
+      `);
 
-      // 이미지 파일 유효성 검사 (누락 시 DB와 파일 시스템 동기화 필요)
-      if (item.type === "img" && item.imageMeta) {
-        const { file_path, thumbnail_path } = item.imageMeta;
+      const row = stmt.get(id);
+      if (!row) return null;
 
-        // 원본 파일 없으면 데이터 자체가 무효함
-        if (file_path && !fs.existsSync(file_path)) {
-          console.warn(`[Repo] 원본 누락됨. 삭제 처리: ${id}`);
-          this.delete(id).catch(console.error); // 비동기 삭제 요청
-          return null;
-        }
+      // Get tags
+      const tags = this._getTags(id);
+      // Get image meta
+      const meta = this._getImageMeta(id);
 
-        // 썸네일만 없으면 재생성 시도
-        if (thumbnail_path && !fs.existsSync(thumbnail_path)) {
-          console.warn(`[Repo] 썸네일 누락됨. 재생성 시도: ${id}`);
-          this._regenerateThumbnail(id, file_path).catch(console.error);
-        }
-      }
-
-      return item;
+      return this._mapToDto(row, meta, tags);
     } catch (error) {
       throw CCDError.create("E610", {
         module: "ClipboardRepository",
@@ -74,67 +53,275 @@ class ClipboardRepository {
   }
 
   /**
-   * 전체 항목 조회 (UI 표시용)
+   * Get all clipboard items
+   * @param {object} [options]
+   * @returns {Array<object>}
    */
-  getAll() {
-    return this.reader.getAllClipboardItems();
+  getAll(options = {}) {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT 
+          c.*, 
+          im.width, im.height, im.file_size, im.file_path, im.thumbnail_path
+        FROM clipboard c
+        LEFT JOIN image_meta im ON c.id = im.data_id
+        ORDER BY c.created_at DESC
+      `);
+      const rows = stmt.all();
+      return rows.map((row) => {
+        const tags = this._getTags(row.id);
+        const meta = this._getImageMeta(row.id);
+        return this._mapToDto(row, meta, tags);
+      });
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "getAll",
+        message: error.message,
+      });
+    }
   }
 
   /**
-   * 검색
+   * Search clipboard items
+   * @param {string} query
+   * @param {object} filters
+   * @returns {Array<object>}
    */
-  search(query, options) {
-    return this.reader.search(query, options);
+  search(query, filters = {}) {
+    try {
+      // Implement search logic here
+      // This is a simplified example
+      const stmt = this.db.prepare(`
+        SELECT * FROM clipboard 
+        WHERE content LIKE ? 
+        ORDER BY created_at DESC
+      `);
+      return stmt.all(`%${query}%`);
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "search",
+        message: error.message,
+      });
+    }
   }
 
   /**
-   * 항목 삭제 (파일 삭제 + DB 삭제 + Outbox 기록)
+   * Save clipboard item
+   * @param {object} item
+   * @param {object} [meta]
+   * @returns {Promise<void>}
+   */
+  async save(item, meta) {
+    const now = Math.floor(Date.now() / 1000);
+    const tx = this.db.transaction(() => {
+      // Save to clipboard table
+      const stmt = this.db.prepare(`
+        INSERT OR REPLACE INTO clipboard 
+        (id, type, format, content, is_synced, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(
+        item.id,
+        item.type,
+        item.format,
+        item.content,
+        item.is_synced || 0,
+        item.created_at || now
+      );
+
+      // Save to image_meta if exists
+      if (meta) {
+        const metaStmt = this.db.prepare(`
+          INSERT OR REPLACE INTO image_meta 
+          (data_id, width, height, file_size, file_path, thumbnail_path)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        metaStmt.run(
+          item.id,
+          meta.width,
+          meta.height,
+          meta.file_size,
+          meta.file_path,
+          meta.thumbnail_path
+        );
+      }
+    });
+
+    try {
+      tx();
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "save",
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Delete clipboard item
    * @param {string} id
+   * @returns {Promise<void>}
    */
   async delete(id) {
     try {
-      // 1. 파일 삭제를 위해 메타데이터 먼저 조회
-      const meta = this.reader.getImageMeta(id);
+      // Delete from database
+      const stmt = this.db.prepare("DELETE FROM clipboard WHERE id = ?");
+      stmt.run(id);
 
-      // 2. 파일 시스템에서 물리적 파일 삭제 (DB 트랜잭션 외부 수행)
-      if (meta) {
-        if (meta.file_path) await fs.remove(meta.file_path).catch(() => {});
-        if (meta.thumbnail_path)
-          await fs.remove(meta.thumbnail_path).catch(() => {});
+      // Delete associated image files if they exist
+      const meta = this._getImageMeta(id);
+      if (meta && meta.file_path) {
+        await fs.remove(meta.file_path).catch(() => {});
       }
-
-      // 3. DB 삭제 (트랜잭션)
-      return this.uow.execute((ctx) => {
-        // 삭제 사실을 Sync 모듈이 알 수 있도록 Outbox에 기록
-        ctx.outbox.enqueue("DELETE", id, {});
-        ctx.clipboard.delete(id);
-      });
+      if (meta && meta.thumbnail_path) {
+        await fs.remove(meta.thumbnail_path).catch(() => {});
+      }
     } catch (error) {
       throw CCDError.create("E630", {
         module: "ClipboardRepository",
         context: "delete",
-        message: `삭제 실패: ${id}`,
-        cause: error,
+        message: error.message,
       });
     }
   }
 
   /**
-   * 썸네일 재생성 (내부 헬퍼)
-   * @private
+   * Attach tags to clipboard item
+   * @param {string} dataId
+   * @param {Array<string>} tagNames
+   * @returns {Promise<void>}
    */
-  async _regenerateThumbnail(id, originalPath) {
+  async attachTags(dataId, tagNames) {
     try {
-      const newThumbPath = await this.imageProcessor.generateThumbnail(
-        originalPath
-      );
-      // DB 업데이트 (단일 업데이트라 트랜잭션 없이 수행해도 무방하나 UoW 사용 권장)
-      this.uow.execute((ctx) => {
-        ctx.clipboard.updateThumbnailPath(id, newThumbPath);
+      const tx = this.db.transaction(() => {
+        // 1. 기존 태그 연결 제거
+        this.db.prepare("DELETE FROM data_tag WHERE data_id = ?").run(dataId);
+
+        // 2. 태그 저장 및 연결 (Source는 'user'로 고정 가정)
+        const insertTagStmt = this.db.prepare(`
+          INSERT OR IGNORE INTO tag (local_id, name, source) VALUES (?, ?, 'user')
+        `);
+
+        const getTagIdStmt = this.db.prepare(`
+          SELECT local_id FROM tag WHERE name = ? AND source = 'user'
+        `);
+
+        const linkStmt = this.db.prepare(`
+          INSERT OR IGNORE INTO data_tag (data_id, tag_id) 
+          VALUES (?, ?)
+        `);
+
+        for (const name of tagNames) {
+          // 2-1. 태그가 없으면 생성 (UUID 생성 필요)
+          // INSERT OR IGNORE이므로 이미 있으면 무시됨
+          const newTagId = crypto.randomUUID();
+          insertTagStmt.run(newTagId, name);
+
+          // 2-2. 태그 ID 조회 (방금 넣은 것 혹은 기존 것)
+          const tagRow = getTagIdStmt.get(name);
+
+          if (tagRow) {
+            // 2-3. 연결 테이블에 저장
+            linkStmt.run(dataId, tagRow.local_id);
+          }
+        }
       });
-    } catch (err) {
-      console.error(`[Repo] 썸네일 재생성 실패: ${id}`, err);
+
+      tx();
+    } catch (error) {
+      throw CCDError.create("E640", {
+        module: "ClipboardRepository",
+        context: "attachTags",
+        message: error.message,
+      });
     }
+  }
+
+  /**
+   * 이미지 경로만 업데이트 (Lazy Loading 완료 시 호출)
+   * @param {string} id
+   * @param {object} paths { file_path?: string, thumbnail_path?: string }
+   */
+  updateImagePaths(id, { file_path, thumbnail_path }) {
+    const updates = [];
+    const params = [];
+
+    if (file_path !== undefined) {
+      updates.push("file_path = ?");
+      params.push(file_path);
+    }
+    if (thumbnail_path !== undefined) {
+      updates.push("thumbnail_path = ?");
+      params.push(thumbnail_path);
+    }
+
+    // 업데이트할 내용이 없으면 종료
+    if (updates.length === 0) return;
+
+    params.push(id); // WHERE 조건용 id
+
+    const stmt = this.db.prepare(`
+    UPDATE image_meta 
+    SET ${updates.join(", ")}
+    WHERE data_id = ?
+  `);
+
+    stmt.run(...params);
+  }
+
+  // --- Private helper methods ---
+
+  /**
+   * Get image metadata
+   * @private
+   * @param {string} dataId
+   * @returns {object|null}
+   */
+  _getImageMeta(dataId) {
+    const stmt = this.db.prepare(`
+      SELECT * FROM image_meta WHERE data_id = ?
+    `);
+    return stmt.get(dataId) || null;
+  }
+
+  /**
+   * Get tags for a clipboard item
+   * @private
+   * @param {string} dataId
+   * @returns {Array<object>}
+   */
+  _getTags(dataId) {
+    // tag.id -> tag.local_id 로 수정
+    const stmt = this.db.prepare(`
+      SELECT t.* FROM tag t
+      JOIN data_tag dt ON t.local_id = dt.tag_id
+      WHERE dt.data_id = ?
+    `);
+    return stmt.all(dataId);
+  }
+
+  /**
+   * Map database row to DTO
+   * @private
+   * @param {object} row
+   * @param {object|null} meta
+   * @param {Array<object>} tags
+   * @returns {object}
+   */
+  _mapToDto(row, meta, tags) {
+    return {
+      id: row.id,
+      type: row.type,
+      format: row.format,
+      content: row.content,
+      isSynced: row.is_synced === 1,
+      createdAt: row.created_at,
+      meta: meta,
+      tags: tags,
+    };
   }
 }
 

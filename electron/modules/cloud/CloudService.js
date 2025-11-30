@@ -1,377 +1,314 @@
-// src/main/modules/cloud/CloudService.js
-const fs = require("fs");
+const fs = require("fs-extra");
+const path = require("path");
 const FormData = require("form-data");
-const WebSocket = require("ws");
+const { app } = require("electron");
+const { EventEmitter } = require("events");
 const CCDError = require("../../shared/errors/CCDError");
-const { createHttpClient } = require("../../shared/utility/HttpClient");
 
-class CloudService {
+class CloudService extends EventEmitter {
   /**
-   * @param {import('../../infrastructure/repositories/SyncRepository')} repository
-   * @param {object} dependencies
-   * @param {import('../auth/AuthService').AuthService} dependencies.authService
-   * @param {import('../auth/TokenStorage').TokenStorage} dependencies.tokenStorage
-   * @param {import('../../shared/utils/ImageProcessor')} dependencies.imageProcessor
-   * @param {string} dependencies.apiBaseURL
+   * @param {object} services
+   * @param {import('../../infrastructure/repositories/OutboxRepository')} services.outboxRepo
+   * @param {import('../../infrastructure/repositories/ClipboardRepository')} services.clipboardRepo
+   * @param {import('./WebSocketManager')} services.wsManager
+   * @param {import('../auth/AuthService')} services.authService
+   * @param {import('axios').AxiosInstance} services.uploadClient
+   * @param {string} services.apiBaseURL
    */
-  constructor(repository, dependencies) {
-    this.repository = repository;
-    this.authService = dependencies.authService;
-    this.tokenStorage = dependencies.tokenStorage;
-    this.imageProcessor = dependencies.imageProcessor;
-    this.apiBaseURL = dependencies.apiBaseURL;
+  constructor({
+    outboxRepo,
+    clipboardRepo,
+    wsManager,
+    authService,
+    uploadClient,
+    apiBaseURL,
+  }) {
+    super();
+    this.outboxRepo = outboxRepo;
+    this.clipboardRepo = clipboardRepo;
+    this.wsManager = wsManager;
+    this.authService = authService;
+    this.uploadClient = uploadClient;
+    this.apiBaseURL = apiBaseURL;
 
-    // WebSocket 상태
-    this.socketClient = null;
+    // 이미지 저장 경로 (예: %APPDATA%/ccd-electron/images)
+    this.imagesDir = path.join(app.getPath("userData"), "images");
 
-    // 토큰 갱신 상태 관리 (Mutex 역할)
-    this.isRefreshing = false;
-    this.refreshSubscribers = [];
-
-    // Axios 인스턴스 설정
-    this.axiosInstance = this._setupAxiosInstance();
+    this._setupAuthListeners();
   }
 
-  /**
-   * Axios 인터셉터 설정 (Auth Token 주입 및 갱신 로직)
-   * @private
-   */
-  _setupAxiosInstance() {
-    const instance = createHttpClient(this.apiBaseURL);
+  _setupAuthListeners() {
+    this.authService.on("login-success", async (userId) => {
+      console.log("[CloudService] Login detected.");
 
-    // Request Interceptor: 토큰 주입
-    instance.interceptors.request.use(
-      (config) => {
-        const token = this.tokenStorage.getAccessToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
+      // 1. 실시간 웹소켓 연결
+      this.startRealtimeSync(userId);
 
-    // Response Interceptor: 401 처리 (토큰 갱신)
-    instance.interceptors.response.use(
-      (response) => response,
-      (error) => this._handleAuthError(error, instance)
-    );
+      // 2. 초기 데이터(메타데이터 + 썸네일) 가져오기
+      try {
+        await this.fetchAndSyncMetadata();
+      } catch (error) {
+        console.error("[CloudService] Initial metadata sync failed:", error);
+      }
+    });
 
-    return instance;
+    this.authService.on("logout-success", () => {
+      console.log("[CloudService] Logout detected. Disconnecting...");
+      this.stopRealtimeSync();
+    });
   }
 
+  // =================================================================
+  // Public API: UI 및 SyncCoordinator 호출용
+  // =================================================================
+
   /**
-   * 401 에러 처리 및 토큰 갱신 재시도 로직
+   * [UI 호출] 사용자 업로드 요청 (Outbox에 이벤트만 등록)
    */
-  async _handleAuthError(error, instance) {
-    const originalRequest = error.config;
-
-    if (error.response?.status !== 401 || originalRequest._retry) {
-      return Promise.reject(error);
-    }
-
-    originalRequest._retry = true;
-
-    if (this.isRefreshing) {
-      // 이미 갱신 중이면 큐에 대기
-      return new Promise((resolve, reject) => {
-        this.refreshSubscribers.push({ resolve, reject });
-      })
-        .then((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-          return instance(originalRequest);
-        })
-        .catch((err) => Promise.reject(err));
-    }
-
-    this.isRefreshing = true;
-
+  async requestUpload(itemId, isPriority = false) {
     try {
-      // AuthService를 통해 토큰 갱신 (순환 참조 없이 주입된 인스턴스 사용)
-      const tokens = await this.authService.refreshAccessToken();
+      console.log(`[CloudService] Requesting upload for item: ${itemId}`);
 
-      this._resolveRefreshQueue(null, tokens.accessToken);
-      originalRequest.headers.Authorization = `Bearer ${tokens.accessToken}`;
-      return instance(originalRequest);
-    } catch (refreshError) {
-      this._resolveRefreshQueue(refreshError);
-      await this.authService.logout();
-      throw CCDError.create("E610", {
-        module: "CloudService",
-        context: "토큰 갱신 실패",
-        message: "세션이 만료되었습니다. 다시 로그인 해주세요.",
-        cause: refreshError,
-      });
-    } finally {
-      this.isRefreshing = false;
-    }
-  }
-
-  _resolveRefreshQueue(error, token) {
-    while (this.refreshSubscribers.length) {
-      const subscriber = this.refreshSubscribers.shift();
-      if (error) subscriber.reject(error);
-      else subscriber.resolve(token);
-    }
-  }
-
-  /**
-   * 초기 메타데이터 동기화 (Downstream)
-   */
-  async fetchInitialMetadata() {
-    // SyncRepository를 통해 마지막 동기화 시간 조회
-    const config = await this.repository.getConfig();
-    const lastSyncTime = config.last_modified || 0;
-
-    const url = `/api/v1/clipboard-data`;
-
-    try {
-      const response = await this.axiosInstance.get(url, {
-        params: { last_sync_time: lastSyncTime },
-      });
-
-      const { items, new_last_modified } = response.data;
-
-      if (!items || items.length === 0) {
-        return new_last_modified || lastSyncTime;
+      const item = await this.clipboardRepo.getById(itemId);
+      if (!item) {
+        throw new Error(`Item with ID ${itemId} not found locally.`);
       }
 
-      console.log(`[Sync] Received ${items.length} new items.`);
+      // Outbox에 'UPLOAD' 이벤트 큐잉 (실제 수행은 SyncCoordinator가 담당)
+      this.outboxRepo.createEvent(itemId, "UPLOAD", { isPriority });
 
-      const thumbnailDownloads = [];
-
-      // SyncRepository의 트랜잭션 처리 메서드 호출
-      // (items 배열을 넘겨서 Repository 내부에서 일괄 처리하도록 위임)
-      await this.repository.processDownstreamSync(items, async (item) => {
-        // 썸네일이 필요한 경우 다운로드 예약 (Callback 방식 활용)
-        if (item.image_meta && item.image_meta.thumbnail_url) {
-          thumbnailDownloads.push(
-            this._downloadThumbnailAndSave(
-              item.id,
-              item.image_meta.thumbnail_path,
-              item.image_meta.thumbnail_url
-            )
-          );
-        }
-      });
-
-      // 썸네일 다운로드 병렬 처리
-      await Promise.allSettled(thumbnailDownloads);
-
-      // 동기화 시간 업데이트
-      await this.repository.updateConfig({ last_modified: new_last_modified });
-
-      return new_last_modified;
+      console.log(`[CloudService] Upload event queued for ${itemId}`);
     } catch (error) {
-      throw CCDError.create("E702", {
+      console.error("[CloudService] Failed to queue upload request:", error);
+      throw CCDError.create("E700", {
         module: "CloudService",
-        context: "초기 동기화 실패",
+        context: "requestUpload",
         message: error.message,
-        cause: error,
       });
     }
   }
 
   /**
-   * 썸네일 다운로드 및 저장
+   * [SyncCoordinator 호출] 실제 서버 업로드 수행
    */
-  async _downloadThumbnailAndSave(id, localPath, serverUrl) {
-    try {
-      const fullUrl = `${this.apiBaseURL}${serverUrl}`;
-      const response = await this.axiosInstance.get(fullUrl, {
-        responseType: "arraybuffer",
-      });
-
-      // 주입받은 ImageProcessor 사용
-      await this.imageProcessor.saveFile(localPath, response.data);
-    } catch (error) {
-      console.error(`[Thumbnail] Download failed for ${id}`, error);
+  async uploadItem(outboxItem) {
+    const item = await this.clipboardRepo.getById(outboxItem.data_id);
+    if (!item) {
+      throw new Error(`Item with ID ${outboxItem.data_id} not found locally.`);
     }
-  }
-  /**
-   * 선택된 아이템 ID들을 동기화 대상으로 지정하고 즉시 업로드 시도
-   * @param {string[]} itemIds
-   */
-  async uploadSpecificItems(itemIds) {
-    try {
-      // 1. 해당 아이템들을 클라우드 동기화 대상(is_cloud_item=1)으로 마킹하고 Outbox에 추가
-      for (const id of itemIds) {
-        await this.repository.markAsCloudItem(id);
+
+    console.log(`[CloudService] Uploading item ${item.id} to server...`);
+
+    const formData = new FormData();
+    formData.append("id", item.id);
+    formData.append("type", item.type);
+    formData.append("format", item.format);
+    // Unix Timestamp를 ISO String으로 변환
+    formData.append(
+      "created_at",
+      new Date(item.createdAt * 1000).toISOString()
+    );
+
+    if (item.type === "txt") {
+      formData.append("content", item.content);
+    } else if (item.type === "img" && item.meta) {
+      const imagePath = item.meta.file_path;
+      if (await fs.pathExists(imagePath)) {
+        formData.append("file", fs.createReadStream(imagePath));
+      } else {
+        throw new Error(`Image file missing at path: ${imagePath}`);
       }
-      const pendingItems = await this.repository.getPendingEvents();
-      return await this.uploadSyncEvents(pendingItems);
-    } catch (error) {
-      throw CCDError.create("E653", {
-        module: "CloudService",
-        context: "uploadSpecificItems",
-        message: error.message,
-        cause: error,
-      });
     }
+
+    // Axios 인스턴스(uploadClient) 사용
+    const response = await this.uploadClient.post(
+      "/api/v1/clipboard",
+      formData,
+      {
+        headers: { ...formData.getHeaders() },
+        timeout: 60000, // 대용량 업로드 고려 60초
+      }
+    );
+
+    console.log(`[CloudService] Upload successful: ${item.id}`);
+    return response.data;
   }
-
-  async uploadSyncEvents(pendingItems) {
-    if (!pendingItems || pendingItems.length === 0) return null;
-
-    // 0. 이미지 업로드 전처리 (Filter: INSERT operation AND image type)
-    const imageUploads = pendingItems
-      .filter(
-        (item) =>
-          item.op === "INSERT" && JSON.parse(item.op_args).type === "img"
-      )
-      .map((item) => this._uploadImageFile(JSON.parse(item.op_args)));
-
-    try {
-      // [필수] 모든 파일 업로드가 성공할 때까지 대기
-      await Promise.all(imageUploads);
-
-      // 1. 모든 파일이 성공적으로 서버에 올라갔다면, 메타데이터 JSON 페이로드 구성 및 전송
-      const payload = pendingItems.map((item) => ({
-        operation: item.op,
-        data_id: item.data_id,
-        args: JSON.parse(item.op_args),
-        correlation_id: `${item.data_id}-${item.created_at}`,
-        local_outbox_id: item.id,
-      }));
-
-      const response = await this.axiosInstance.post("/sync/events", payload);
-      // ... (나머지 로직 동일)
-
-      await this.repository.handleSyncResponse(tag_mappings, pendingItems);
-      return response.data;
-    } catch (error) {
-      // 파일 업로드(Promise.all) 중 하나라도 실패하면 catch 블록으로 이동
-      // 이 실패는 Backoff 재시도 로직이 처리합니다.
-      await this._applyExponentialBackoff(pendingItems, error);
-      return null;
-    }
-  }
-  // === src/main/modules/cloud/CloudService.js 내부에 추가 ===
 
   /**
-   * 로컬에 저장된 이미지 파일을 서버의 /api/v1/items/image 엔드포인트로 전송
-   * @param {object} itemArgs - Outbox args에 담긴 클립보드 아이템 데이터
+   * [초기 동기화] 서버 메타데이터 조회 및 로컬 동기화
    */
-  async _uploadImageFile(itemArgs) {
-    const { id, format, created_at, content } = itemArgs; // content는 로컬 파일 경로
+  async fetchAndSyncMetadata() {
+    console.log("[CloudService] Fetching metadata from cloud...");
 
-    if (!fs.existsSync(content)) {
-      console.warn(
-        `[Upload] Image file not found locally for ID ${id}. Skipping file upload.`
-      );
+    // GET /api/v1/clipboard (페이징 없이 전체 혹은 최근 항목 조회라 가정)
+    const response = await this.uploadClient.get("/api/v1/clipboard");
+    const cloudItems = response.data;
+
+    if (!Array.isArray(cloudItems) || cloudItems.length === 0) {
+      console.log("[CloudService] No items found in cloud.");
+      // 초기 동기화 완료 이벤트 (항목 0)
+      this.emit("initial-sync-complete", { total: 0, synced: 0 });
       return;
     }
 
-    // 1. FormData 구성
-    const formData = new FormData();
-    formData.append("id", id);
-    formData.append("format", format);
-    formData.append("created_at", created_at);
+    console.log(
+      `[CloudService] Received ${cloudItems.length} items. Syncing...`
+    );
 
-    // 2. 파일 스트림 추가 (Form-Data에 파일 첨부)
-    formData.append("file", fs.createReadStream(content), {
-      filename: `${id}.${format.toLowerCase()}`,
-      contentType: `image/${format.toLowerCase()}`,
-    });
+    // 폴더 확보
+    await fs.ensureDir(this.imagesDir);
 
-    try {
-      const url = "/api/v1/items/image";
-
-      // 3. 파일 업로드 요청
-      // FormData를 사용할 때 headers에 Content-Type: multipart/form-data와 boundary를 설정해야 합니다.
-      // Axios는 FormData 객체를 사용하면 자동으로 처리해주지만, 명시적으로 headers를 넘겨줍니다.
-      const response = await this.axiosInstance.post(url, formData, {
-        headers: {
-          ...formData.getHeaders(), // FormData가 생성한 Content-Type/Boundary 헤더 주입
-          // Authorization 헤더는 인터셉터가 자동으로 추가함
-        },
-        maxBodyLength: Infinity, // 대용량 파일 전송을 위해 필요할 수 있음
-        maxContentLength: Infinity,
-      });
-
-      console.log(`[Upload] Image file for ID ${id} uploaded successfully.`);
-      return response.data; // 서버에서 받은 URL이나 메타데이터 포함 가능
-    } catch (error) {
-      // 4xx 에러가 나면 서버에 데이터가 없으므로 재시도 불필요
-      if (error.response?.status >= 400 && error.response.status < 500) {
+    let syncCount = 0;
+    for (const remoteItem of cloudItems) {
+      try {
+        await this._saveRemoteItemToLocal(remoteItem);
+        syncCount++;
+      } catch (err) {
         console.error(
-          `[Upload Failed] ${id}: Check server response.`,
-          error.response.data
+          `[CloudService] Failed to sync item ${remoteItem.id}:`,
+          err
         );
       }
-      // 재시도 로직은 uploadSyncEvents의 Backoff가 처리하게 됩니다.
-      throw error;
     }
-  }
-
-  async _applyExponentialBackoff(failedItems, error) {
-    const nowInSeconds = Math.floor(Date.now() / 1000);
-    const MAX_RETRIES = 5;
-
-    for (const item of failedItems) {
-      const newRetryCount = (item.retry_count || 0) + 1;
-      if (newRetryCount > MAX_RETRIES) continue;
-
-      const delay = Math.pow(2, newRetryCount) * 5;
-      await this.repository.updatePendingSyncRetry(
-        item.id,
-        newRetryCount,
-        nowInSeconds + delay
-      );
-    }
-
-    console.error(`[Sync] Upload failed. Backoff applied.`, error.message);
+    console.log(
+      `[CloudService] Sync completed. (${syncCount}/${cloudItems.length})`
+    );
+    // 초기 동기화 완료 이벤트 발생
+    this.emit("initial-sync-complete", {
+      total: cloudItems.length,
+      synced: syncCount,
+    });
   }
 
   /**
-   * WebSocket 초기화
+   * [UI 호출] 원본 이미지 Lazy Loading (사용자가 클릭 시 호출)
+   * @returns {Promise<string>} 로컬 파일 경로
    */
-  initWebSocket(userId, onMessageCallback) {
-    if (this.socketClient?.readyState === WebSocket.OPEN) return;
+  async downloadOriginalImage(itemId) {
+    const item = await this.clipboardRepo.getById(itemId);
 
-    const wsUrl = `${this.apiBaseURL.replace(/^http/, "ws")}/ws/${userId}`;
+    // 1. 이미 원본이 있으면 그 경로 반환
+    if (
+      item.meta &&
+      item.meta.file_path &&
+      (await fs.pathExists(item.meta.file_path))
+    ) {
+      return item.meta.file_path;
+    }
 
-    try {
-      this.socketClient = new WebSocket(wsUrl, {
-        headers: {
-          Authorization: `Bearer ${this.tokenStorage.getAccessToken()}`,
-        },
-      });
+    // 2. 다운로드 URL 확보 (API 호출 예시)
+    console.log(`[CloudService] Downloading original image for ${itemId}...`);
+    // API: GET /api/v1/clipboard/{id}/download (리다이렉트되거나 URL 반환)
+    // 여기서는 스트림을 직접 받는다고 가정
+    const downloadUrl = `/api/v1/clipboard/${itemId}/download`;
 
-      this.socketClient.on("open", () => console.log("[WS] Connected"));
-      this.socketClient.on("message", (data) => {
+    const filename = `original_${itemId}.${item.format || "png"}`;
+    const localPath = await this._downloadImage(downloadUrl, filename);
+
+    // 3. 로컬 DB 업데이트 (file_path 채우기)
+    // ClipboardRepository에 updateImagePaths 메서드가 필요합니다.
+    await this.clipboardRepo.updateImagePaths(itemId, { file_path: localPath });
+
+    return localPath;
+  }
+
+  // =================================================================
+  // Private Helpers
+  // =================================================================
+
+  /**
+   * 서버 아이템을 로컬 DB 구조로 변환 후 저장 (썸네일 다운로드 포함)
+   */
+  async _saveRemoteItemToLocal(remoteItem) {
+    // Unix timestamp 변환 (서버가 ISO string을 준다고 가정)
+    const createdAt = new Date(remoteItem.created_at).getTime() / 1000;
+
+    const item = {
+      id: remoteItem.id,
+      type: remoteItem.type,
+      format: remoteItem.format,
+      content: remoteItem.content || "",
+      createdAt: createdAt,
+      isSynced: true,
+    };
+
+    let meta = null;
+    if (remoteItem.type === "img" && remoteItem.image_meta) {
+      let localThumbnailPath = "";
+
+      // 1. 썸네일 우선 다운로드
+      if (remoteItem.image_meta.thumbnail_url) {
         try {
-          const parsed = JSON.parse(data.toString());
-          this._handleWebSocketMessage(parsed);
-          if (onMessageCallback) onMessageCallback(parsed);
+          const filename = `thumb_${remoteItem.id}.jpg`;
+          // full url이 아니라 상대경로라면 base url 붙여야 함
+          const url = remoteItem.image_meta.thumbnail_url.startsWith("http")
+            ? remoteItem.image_meta.thumbnail_url
+            : `${this.apiBaseURL}${remoteItem.image_meta.thumbnail_url}`;
+
+          localThumbnailPath = await this._downloadImage(url, filename);
         } catch (e) {
-          console.error("[WS] Parse error", e);
+          console.warn(
+            `[CloudService] Thumbnail download failed for ${remoteItem.id}`,
+            e
+          );
         }
-      });
-      this.socketClient.on("close", () => {
-        this.socketClient = null;
-        if (onMessageCallback)
-          onMessageCallback({ event: "connection_closed" });
-      });
-    } catch (error) {
-      console.error("[WS] Init failed", error);
+      }
+
+      meta = {
+        width: remoteItem.image_meta.width,
+        height: remoteItem.image_meta.height,
+        file_size: remoteItem.image_meta.file_size,
+        // ★ 중요: 원본 경로는 비워둠 (Lazy Loading)
+        file_path: "",
+        thumbnail_path: localThumbnailPath,
+      };
     }
+
+    // 로컬 DB 저장 (Outbox 이벤트 생성 안 함)
+    await this.clipboardRepo.save(item, meta);
   }
 
-  _handleWebSocketMessage(msg) {
-    if (msg.event === "tag_id_confirmed") {
-      this.repository
-        .updateTagId(msg.local_id, msg.server_id)
-        .catch((e) => console.error("[WS] Tag update failed", e));
+  /**
+   * 이미지 파일 다운로드 유틸리티
+   */
+  async _downloadImage(urlOrPath, filename) {
+    const localPath = path.join(this.imagesDir, filename);
+
+    // 캐싱: 이미 존재하면 다운로드 스킵
+    if (await fs.pathExists(localPath)) {
+      return localPath;
     }
+
+    const response = await this.uploadClient.get(urlOrPath, {
+      responseType: "stream",
+    });
+
+    const writer = fs.createWriteStream(localPath);
+    response.data.pipe(writer);
+
+    return new Promise((resolve, reject) => {
+      writer.on("finish", () => resolve(localPath));
+      writer.on("error", (err) => {
+        // 실패 시 쓰다 만 파일 삭제
+        fs.unlink(localPath).catch(() => {});
+        reject(err);
+      });
+    });
   }
 
-  closeWebSocket() {
-    if (this.socketClient) {
-      this.socketClient.close();
-      this.socketClient = null;
-    }
+  // =================================================================
+  // WebSocket Methods
+  // =================================================================
+
+  startRealtimeSync(userId) {
+    // wsManager 내부에 isConnected 체크 로직이 있다고 가정하거나 여기서 체크
+    const token = this.authService.getAccessToken();
+    this.wsManager.connect(userId, token);
+  }
+
+  stopRealtimeSync() {
+    this.wsManager.disconnect();
   }
 }
 
-module.exports = { CloudService };
+module.exports = CloudService;

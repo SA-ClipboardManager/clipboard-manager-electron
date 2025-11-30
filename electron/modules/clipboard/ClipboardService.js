@@ -5,8 +5,9 @@ class ClipboardService {
   /**
    * @param {import('../../infrastructure/repositories/ClipboardRepository')} repository
    */
-  constructor(repository) {
+  constructor(repository, cloudService) {
     this.repository = repository;
+    this.cloudService = cloudService;
     this.skipCopyContent = new Set();
     this.skipContentType = null;
     this.skipTimestamp = 0;
@@ -73,12 +74,17 @@ class ClipboardService {
           width: payload.imageMeta.width,
           height: payload.imageMeta.height,
           file_size: payload.imageMeta.file_size,
-          thumbnail_path: payload.imageMeta.thumbnailPath,
+          thumbnail_path: payload.imageMeta.thumbnail_path,
         };
       }
 
       // 리포지토리를 통해 DB 저장
       await this.repository.save(itemToSave, meta);
+
+      // Automatically request upload for the new item
+      // if (this.cloudService) {
+      //   this.cloudService.requestUpload(itemToSave.id);
+      // }
 
       console.log(
         `[ClipboardService] Item saved: ${payload.id} (${payload.type})`
