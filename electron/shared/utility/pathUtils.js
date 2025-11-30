@@ -6,10 +6,29 @@ const root = path.join(app.getPath("documents"), "CCD");
 
 const makeFileUrl = (absPath) => {
   if (!absPath) return null;
-  if (/^(https?:|data:)/i.test(absPath)) return absPath;
+  if (/^(https?:|data:)/i.test(absPath)) return absPath; // already a URL
+  // 디렉터리면 무시 (파일만 허용)
+  try {
+    const st = fs.statSync(absPath);
+    if (st.isDirectory()) {
+      return null; // 디렉터리 URL 생성 회피
+    }
+  } catch (e) {
+    // stat 실패하면 그대로 진행 (나중에 접근 시 404 처리)
+  }
   const rel = path.relative(root, absPath);
+  if (!rel) return null; // root 자체일 경우 생성 안함
   const posix = rel.split(path.sep).join("/");
   return `ccd://${encodeURI(posix)}`;
+};
+
+const resolveCcdUrl = (ccdUrl) => {
+  if (!ccdUrl || !ccdUrl.startsWith("ccd://")) return ccdUrl;
+  const encoded = ccdUrl.replace(/^ccd:\/\//, "");
+  const decodedPosix = decodeURI(encoded);
+  // Convert posix path back to platform path
+  const platformSegments = decodedPosix.split("/").filter(Boolean);
+  return path.join(root, ...platformSegments);
 };
 
 function transformItem(item, imageMeta = null, tags = []) {
@@ -47,4 +66,4 @@ function transformItem(item, imageMeta = null, tags = []) {
   };
 }
 
-module.exports = { transformItem };
+module.exports = { transformItem, makeFileUrl, resolveCcdUrl };

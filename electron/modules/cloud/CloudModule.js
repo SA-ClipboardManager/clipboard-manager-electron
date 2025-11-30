@@ -72,6 +72,11 @@ class CloudModule extends BaseModule {
     this.syncCoordinator.on("upload-success", (data) => {
       console.log("[CloudModule] Upload success:", data.itemId);
       this._sendToRenderer("upload-success", data);
+      if (data.item) {
+        // 개별 항목 최신화 전달 (아이콘 상태 등)
+        const transformed = this._transformItemPaths(data.item);
+        this._sendToRenderer("item-updated", transformed);
+      }
     });
 
     this.syncCoordinator.on("upload-failed", (data) => {

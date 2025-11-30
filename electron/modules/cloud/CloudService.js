@@ -131,7 +131,20 @@ class CloudService extends EventEmitter {
     );
 
     console.log(`[CloudService] Upload successful: ${item.id}`);
-    return response.data;
+
+    // 로컬 DB 상태 갱신 (is_synced / is_cloud_item)
+    try {
+      this.clipboardRepo.markAsSynced(item.id);
+    } catch (e) {
+      console.warn(
+        `[CloudService] Failed to mark item as synced: ${item.id}`,
+        e.message
+      );
+    }
+
+    // 최신 DTO 다시 조회 후 반환 (SyncCoordinator/CloudModule가 UI 반영에 활용)
+    const updated = await this.clipboardRepo.getById(item.id);
+    return { server: response.data, local: updated };
   }
 
   /**

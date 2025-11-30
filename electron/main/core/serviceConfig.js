@@ -60,36 +60,31 @@ class serviceConfig {
 
     // 3. CloudService 생성
     const cloudService = new CloudService({
-      outboxRepo: outboxRepo,
-      clipboardRepo: clipboardRepo,
-      wsManager: webSocketManager,
-      authService: authService,
-      uploadClient: uploadClient,
-      apiBaseURL: apiBaseURL,
-    });
-
-    // 4. SyncCoordinator 생성 및 시작 (백그라운드 업로더)
-    const syncCoordinator = new SyncCoordinator({
-      outboxRepo: outboxRepo,
-      cloudService: cloudService,
-    });
-    const notifyService = new NotifyService(clipboardRepo, clipboardService);
-    const searchService = new SearchService(
+      outboxRepo,
       clipboardRepo,
-      cloudService.axiosInstance
-    ); //인증 & 갱신 포함된 axios 주입
+      wsManager: webSocketManager,
+      authService,
+      uploadClient,
+      apiBaseURL,
+    });
 
-    // 앱 시작과 동시에 백그라운드 동기화 루프 시작
-    syncCoordinator.start();
-
-    // 5. ClipboardService 생성
-    // (이제 cloudService가 정의되었으므로 안전하게 주입 가능)
+    // 4. ClipboardService 먼저 생성 (다른 서비스가 참조할 수 있도록)
     const clipboardService = new ClipboardService(clipboardRepo, cloudService);
-    const etcService = new EtcService(
+
+    // 5. SyncCoordinator 생성 및 시작 (백그라운드 업로더)
+    const syncCoordinator = new SyncCoordinator({
+      outboxRepo,
+      cloudService,
+    });
+    syncCoordinator.start(); // 동기화 루프 시작
+
+    // 6. 부가 서비스 생성 (ClipboardService 의존 가능)
+    const notifyService = new NotifyService(
       clipboardRepo,
       clipboardService,
       syncCoordinator
     );
+    const searchService = new SearchService(clipboardRepo, uploadClient); // 인증 & 갱신 포함된 axios 주입 (CloudService.uploadClient 재사용)
 
     // 6. 서비스 등록
     this.services = {
@@ -98,7 +93,7 @@ class serviceConfig {
       ClipboardService: clipboardService,
       CloudService: cloudService,
       WebSocketManager: webSocketManager,
-      SyncCoordinator: syncCoordinator, // 서비스 목록에 추가
+      SyncCoordinator: syncCoordinator,
       NotifyService: notifyService,
       SearchService: searchService,
     };

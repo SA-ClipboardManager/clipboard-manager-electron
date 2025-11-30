@@ -46,6 +46,15 @@ class SyncCoordinator extends EventEmitter {
   }
 
   /**
+   * [Public] 즉시 Outbox 처리 트리거 (우선순위 업로드 등 수동 호출용)
+   * CloudModule 등에서 processPendingUploads 호출 시 사용.
+   */
+  async processPendingUploads() {
+    // 내부 루프를 한 번 강제로 실행
+    await this._processOutbox();
+  }
+
+  /**
    * [Private] Outbox 처리 메인 루프
    */
   async _processOutbox() {
@@ -91,7 +100,11 @@ class SyncCoordinator extends EventEmitter {
       this.outboxRepo.markAsCompleted(outboxItem.id);
       console.log(`[SyncCoordinator] Sync Success: ${outboxItem.data_id}`);
       // 렌더러로 전달할 업로드 성공 이벤트 발생
-      this.emit("upload-success", { itemId: outboxItem.data_id, result });
+      this.emit("upload-success", {
+        itemId: outboxItem.data_id,
+        result,
+        item: result.local,
+      });
     } catch (error) {
       console.error(
         `[SyncCoordinator] Sync Failed for ${outboxItem.data_id}:`,

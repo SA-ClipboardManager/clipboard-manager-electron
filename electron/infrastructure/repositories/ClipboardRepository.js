@@ -328,7 +328,76 @@ class ClipboardRepository {
    */
 
   getAllClipboardWithMetaAndTags() {
-    return this.reader.getAllClipboardWithMetaAndTags();
+    try {
+      // Aggregate tags and image meta per clipboard item
+      const stmt = this.db.prepare(`
+        SELECT 
+          c.id,
+          c.type,
+          c.format,
+          c.content,
+          c.created_at,
+          GROUP_CONCAT(t.name) AS tag_names,
+          im.width,
+          im.height,
+          im.file_size,
+          im.file_path,
+          im.thumbnail_path
+        FROM clipboard c
+        LEFT JOIN data_tag dt ON c.id = dt.data_id
+        LEFT JOIN tag t ON t.local_id = dt.tag_id
+        LEFT JOIN image_meta im ON c.id = im.data_id
+        GROUP BY c.id
+        ORDER BY c.created_at DESC
+      `);
+
+      const rows = stmt.all();
+      return rows.map((r) => ({
+        id: r.id,
+        type: r.type,
+        format: r.format,
+        content: r.content,
+        created_at: r.created_at,
+        tag_names: r.tag_names || "",
+        image_meta:
+          r.width || r.height || r.file_size || r.file_path || r.thumbnail_path
+            ? {
+                width: r.width,
+                height: r.height,
+                file_size: r.file_size,
+                file_path: r.file_path,
+                thumbnail_path: r.thumbnail_path,
+              }
+            : null,
+      }));
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "getAllClipboardWithMetaAndTags",
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Mark item as successfully synced to cloud.
+   * @param {string} id
+   */
+  markAsSynced(id) {
+    try {
+      const stmt = this.db.prepare(`
+        UPDATE clipboard
+        SET is_synced = 1, is_cloud_item = 1
+        WHERE id = ?
+      `);
+      stmt.run(id);
+    } catch (error) {
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "markAsSynced",
+        message: error.message,
+      });
+    }
   }
 }
 
