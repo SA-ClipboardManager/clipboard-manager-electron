@@ -61,3 +61,11 @@ export const onCloudUploadStatusChange = (handler) => {
 export const searchKeyword = async (keyword, model) => {
   return window.electronAPI?.searchKeyword?.(keyword, model);
 };
+
+// 초기 동기화 완료 이벤트
+export const onInitialSyncComplete = (handler) => {
+  window.electronAPI?.onInitialSyncComplete?.(handler);
+};
+export const offInitialSyncComplete = (handler) => {
+  window.electronAPI?.offInitialSyncComplete?.(handler);
+};

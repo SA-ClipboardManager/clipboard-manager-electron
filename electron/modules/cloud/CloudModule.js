@@ -1,68 +1,138 @@
-const BaseModule = require("../../main/core/BaseModule");
-const CCDError = require("../../shared/errors/CCDError");
+// electron/modules/cloud/CloudModule.js
 const { BrowserWindow } = require("electron");
+const BaseModule = require("../../main/core/BaseModule");
+const { makeFileUrl } = require("../../shared/utility/pathUtils");
+
 class CloudModule extends BaseModule {
   constructor(services) {
     super(services, "cloud");
-    this.service = services.CloudService;
-    const authService = services.AuthService;
 
-    authService.on("login-success", (userId) => {
-      console.log(
-        `[CloudModule] Login detected for ${userId}. Connecting WebSocket...`
-      );
-    });
+    // Single dependency
+    this.cloudService = services.CloudService;
+    this.syncCoordinator = services.SyncCoordinator;
 
-    authService.on("logout-success", () => {
-      console.log(`[CloudModule] Logout detected. Closing WebSocket...`);
-      this.service.closeWebSocket();
-    });
-    this._checkInitialLoginState(services.AuthService);
+    if (!this.cloudService) {
+      console.error("[CloudModule] CloudService not initialized");
+      return;
+    }
+
+    // Forward WebSocket events to renderer
+    this._setupWebSocketForwarding();
+
+    // Forward SyncCoordinator events to renderer
+    this._setupSyncEventForwarding();
   }
-  async _checkInitialLoginState(authService) {
-    const state = await authService.getLoginState();
-    if (state.isLoggedIn) {
-      // 이미 로그인 상태라면 소켓 즉시 연결
-      // (주의: userId를 가져오는 메서드가 AuthService에 필요할 수 있음)
-      const userId = authService.getCurrentUserId();
+
+  _transformItemPaths(item) {
+    if (item.type === "img") {
+      item.content = makeFileUrl(item.content);
+      if (item.meta && item.meta.thumbnail_path) {
+        item.meta.thumbnail_path = makeFileUrl(item.meta.thumbnail_path);
+      }
+    }
+    return item;
+  }
+
+  _sendToRenderer(channel, data) {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win && win.webContents) {
+      win.webContents.send(channel, data);
+    }
+  }
+
+  _setupWebSocketForwarding() {
+    const wsManager = this.cloudService.wsManager;
+
+    wsManager.on("sync-notification", (data) => {
+      console.log("[CloudModule] Sync notification from server:", data);
+
+      const items = Array.isArray(data) ? data : [data];
+      const transformedItems = items.map(this._transformItemPaths);
+
+      this._sendToRenderer("sync-notification", transformedItems);
+    });
+
+    wsManager.on("item-updated", (data) => {
+      console.log("[CloudModule] Item updated from server:", data);
+      const transformedItem = this._transformItemPaths(data);
+      this._sendToRenderer("item-updated", transformedItem);
+    });
+
+    // Forward connection state changes
+    wsManager.on("connected", () => {
+      this._sendToRenderer("ws-connected");
+    });
+
+    wsManager.on("disconnected", () => {
+      this._sendToRenderer("ws-disconnected");
+    });
+  }
+
+  _setupSyncEventForwarding() {
+    this.syncCoordinator.on("upload-success", (data) => {
+      console.log("[CloudModule] Upload success:", data.itemId);
+      this._sendToRenderer("upload-success", data);
+      if (data.item) {
+        // 개별 항목 최신화 전달 (아이콘 상태 등)
+        const transformed = this._transformItemPaths(data.item);
+        this._sendToRenderer("item-updated", transformed);
+      }
+    });
+
+    this.syncCoordinator.on("upload-failed", (data) => {
+      console.log("[CloudModule] Upload failed:", data.itemId);
+      this._sendToRenderer("upload-failed", data);
+    });
+
+    // 초기 동기화 완료 이벤트 전달
+    if (this.cloudService && this.cloudService.on) {
+      this.cloudService.on("initial-sync-complete", (data) => {
+        this._sendToRenderer("initial-sync-complete", data);
+      });
+    }
+  }
+
+  async onReady() {
+    // Check initial login state
+    try {
+      const state = await this.cloudService.authService.getLoginState();
+      if (state.isLoggedIn && state.userId) {
+        await this.cloudService.startRealtimeSync(state.userId);
+        // The outbox will be processed automatically on login
+      }
+    } catch (error) {
+      console.error("[CloudModule] Error checking initial login state:", error);
     }
   }
 
   registerIpcHandler(ipcMain) {
     ipcMain.handle("upload-selected-items", async (_, itemIds) => {
+      if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return { success: false, message: "No items selected for upload." };
+      }
+
       try {
-        if (!itemIds || !Array.isArray(itemIds)) {
-          throw new Error("Invalid itemIds");
+        console.log(
+          `[CloudModule] Requesting priority upload for ${itemIds.length} items.`
+        );
+        for (const itemId of itemIds) {
+          this.cloudService.requestUpload(itemId, true); // true for priority
         }
 
-        const result = await this.service.uploadSpecificItems(itemIds);
+        // Immediately trigger processing for priority items
+        this.syncCoordinator.processPendingUploads();
 
-        return { success: true, result };
-      } catch (err) {
-        const error = CCDError.create("E653", {
-          module: "ipcHandler",
-          context: "선택 항목 업로드",
-          details: err.message,
-        });
-        console.error(error);
-        return error.toJSON();
+        return { success: true };
+      } catch (error) {
+        console.error("[CloudModule] Error requesting priority upload:", error);
+        return { success: false, message: error.message };
       }
     });
+  }
 
-    ipcMain.handle("delete-item", async (_, { dataId, deleteOption }) => {
-      try {
-        await this.service.deleteItem(dataId, deleteOption);
-        return { deletionResult: true, refreshReq: true };
-      } catch (err) {
-        const error = CCDError.create("E650", {
-          module: "ipcHandler",
-          context: "데이터 삭제",
-          details: err.message,
-        });
-        console.error(error);
-        return error.toJSON();
-      }
-    });
+  async onUnload() {
+    // Cleanup resources
+    this.cloudService.wsManager.disconnect();
   }
 }
 

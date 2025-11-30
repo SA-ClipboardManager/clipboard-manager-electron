@@ -64,13 +64,14 @@ class CCDError extends Error {
   }
 
   toJSON() {
+    const { cause, ...serializableDetails } = this.details;
     return {
       success: false,
       error: {
         code: this.code,
         message: this.message,
         timestamp: this.timestamp,
-        ...this.details,
+        ...serializableDetails,
       },
     };
   }

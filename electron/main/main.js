@@ -20,6 +20,23 @@ async function registerCcdProtocol() {
       // pathname은 '/...' 형태 → 선행 슬래시 제거
       const relPath = decodeURIComponent(u.pathname.replace(/^\/+/, ""));
       const finalPath = path.join(FILE_ROOT, relPath);
+      // 보안: 루트 밖으로 나가는 경로 차단
+      const normalizedRoot = path.normalize(FILE_ROOT);
+      const normalizedFinal = path.normalize(finalPath);
+      if (!normalizedFinal.startsWith(normalizedRoot)) {
+        throw new Error("Path escapes FILE_ROOT");
+      }
+
+      // 파일 존재 및 타입 검사
+      let stat;
+      try {
+        stat = await fs.promises.stat(finalPath);
+      } catch (e) {
+        throw new Error("File not found: " + relPath);
+      }
+      if (stat.isDirectory()) {
+        throw new Error("Requested path is a directory: " + relPath);
+      }
 
       const buf = await fs.promises.readFile(finalPath);
 
@@ -41,7 +58,10 @@ async function registerCcdProtocol() {
       });
     } catch (error) {
       console.error(`Error loading file via ${SCHEME} protocol:`, error);
-      return new Response(null, { status: 404 });
+      return new Response(new Blob([error.message]), {
+        status: 404,
+        headers: { "Content-Type": "text/plain" },
+      });
     }
   });
 }

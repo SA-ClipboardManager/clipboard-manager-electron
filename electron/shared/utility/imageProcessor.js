@@ -35,7 +35,7 @@ class ImageProcessor {
         width: info.width,
         height: info.height,
         file_size: info.size,
-        thumbnailPath: thumbnailPath,
+        thumbnail_path: thumbnailPath,
       };
     } catch (error) {
       throw CCDError.create("E710", {

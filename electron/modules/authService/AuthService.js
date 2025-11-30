@@ -46,7 +46,7 @@ class AuthService extends EventEmitter {
    */
   async login(userId, password) {
     try {
-      const url = "/auth/v1/api/v1/auth/login";
+      const url = "/api/v1/auth/login";
 
       const response = await this.httpClient.post(url, {
         user_id: userId,
@@ -67,13 +67,45 @@ class AuthService extends EventEmitter {
   }
 
   /**
+   * @param {string} userId
+   * @param {string} password
+   * @returns {Promise<{joinResultMsg: string}>}
+   */
+  async register(userId, password) {
+    try {
+      const url = "/api/v1/auth/register";
+
+      const response = await this.httpClient.post(url, {
+        user_id: userId,
+        password,
+      });
+
+      if (response.data && response.data.message) {
+        return { joinResultMsg: response.data.message };
+      }
+
+      return { joinResultMsg: "success" };
+    } catch (error) {
+      if (error.response && error.response.status === 409) {
+        return { joinResultMsg: "duplication" };
+      }
+      throw CCDError.create("E503", {
+        module: "AuthService",
+        context: "회원가입 요청 실패",
+        message: error.response?.data?.detail || error.message,
+        cause: error,
+      });
+    }
+  }
+
+  /**
    * @inheritdoc
    */
   async logout() {
     const refreshToken = this.tokenStorage.getRefreshToken();
     try {
       if (refreshToken) {
-        await this.httpClient.post("/auth/logout", {
+        await this.httpClient.post("/api/v1/auth/logout", {
           refresh_token: refreshToken,
         });
       }
@@ -100,6 +132,15 @@ class AuthService extends EventEmitter {
   }
 
   /**
+   * 액세스 토큰만 반환
+   * @returns {string|null}
+   */
+  getAccessToken() {
+    const tokens = this.getAuthToken();
+    return tokens ? tokens.accessToken : null;
+  }
+
+  /**
    * @inheritdoc
    */
   async refreshAccessToken() {
@@ -113,7 +154,7 @@ class AuthService extends EventEmitter {
     }
 
     try {
-      const url = "/auth/v1/api/v1/auth/refresh";
+      const url = "/api/v1/auth/refresh";
 
       const response = await this.httpClient.post(url, {
         refresh_token: refreshToken,
