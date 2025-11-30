@@ -323,6 +323,13 @@ class ClipboardRepository {
       tags: tags,
     };
   }
+  /**
+   * Search Service 용
+   */
+
+  getAllClipboardWithMetaAndTags() {
+    return this.reader.getAllClipboardWithMetaAndTags();
+  }
 }
 
 module.exports = ClipboardRepository;

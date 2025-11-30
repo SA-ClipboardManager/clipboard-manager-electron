@@ -9,7 +9,7 @@ const {
   resolveCcdUrl,
 } = require("../../shared/utility/pathUtils");
 
-class EtcService {
+class NotifyService {
   /**
    * @param {import('../../infrastructure/repositories/ClipboardRepository')} clipboardRepository
    * @param {import('../clipboard/ClipboardService').ClipboardService} clipboardService
@@ -149,4 +149,4 @@ class EtcService {
   }
 }
 
-module.exports = EtcService;
+module.exports = NotifyService;

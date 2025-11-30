@@ -8,7 +8,6 @@ const { AuthService } = require("../../modules/authService/AuthService");
 const {
   ClipboardService,
 } = require("../../modules/clipboard/ClipboardService");
-const EtcService = require("../../modules/notify/notifyService");
 const CloudService = require("../../modules/cloud/CloudService");
 const WebSocketManager = require("../../modules/cloud/WebSocketManager");
 const SyncCoordinator = require("../../modules/cloud/SyncCoordinator");
@@ -16,6 +15,8 @@ const {
   createAuthenticatedHttpClient,
 } = require("../../shared/utility/HttpClient");
 // const SearchService = require("../../modules/search/SearchService");
+const NotifyService = require("../../modules/notify/notifyService");
+const SearchService = require("../../modules/search/SearchService");
 require("dotenv").config();
 
 class serviceConfig {
@@ -72,6 +73,11 @@ class serviceConfig {
       outboxRepo: outboxRepo,
       cloudService: cloudService,
     });
+    const notifyService = new NotifyService(clipboardRepo, clipboardService);
+    const searchService = new SearchService(
+      clipboardRepo,
+      cloudService.axiosInstance
+    ); //인증 & 갱신 포함된 axios 주입
 
     // 앱 시작과 동시에 백그라운드 동기화 루프 시작
     syncCoordinator.start();
@@ -93,7 +99,8 @@ class serviceConfig {
       CloudService: cloudService,
       WebSocketManager: webSocketManager,
       SyncCoordinator: syncCoordinator, // 서비스 목록에 추가
-      EtcService: etcService,
+      NotifyService: notifyService,
+      SearchService: searchService,
     };
 
     console.log(

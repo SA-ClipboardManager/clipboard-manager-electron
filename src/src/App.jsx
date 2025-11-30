@@ -95,6 +95,7 @@ const App = () => {
               refetch={refetch}
               loginInfo={loginInfo}
               setLoginInfo={setLoginInfo}
+              locationFilter={locationFilter}
             />
           </div>
           {/* Tag, 필터 2개 zone */}
