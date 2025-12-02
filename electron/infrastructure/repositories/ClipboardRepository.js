@@ -111,10 +111,13 @@ class ClipboardRepository {
       // This is a simplified example
       const stmt = this.db.prepare(`
         SELECT * FROM clipboard 
-        WHERE content LIKE ? 
+        WHERE content LIKE :query
+        AND (:isCloud IS NULL or is_cloud_item = :isCloud)
         ORDER BY created_at DESC
       `);
-      return stmt.all(`%${query}%`);
+      return stmt.all({
+          isCloud: filters.isCloud ?? null,
+          query: `%${query}%`});
     } catch (error) {
       throw CCDError.create("E610", {
         module: "ClipboardRepository",

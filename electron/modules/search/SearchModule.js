@@ -24,11 +24,11 @@ class SearchModule extends BaseModule{
                 //TODO Cloud에서만 검색 여부 + ui에서 넘겨주는 인자 변경
                 if(model === "local_mobilenet"){
                     console.log("SearchModule_local_mobilenet");
-                    resultItems = await this.service.keywordLocalSearch(keyword);
+                    resultItems = await this.service.keywordLocalSearch(keyword, {isCloud: 0});
                 }
                 else if(model === "cloud_mobilenet"){
                     console.log("SearchModule_cloud_mobilenet");
-                    resultItems = await this.service.keywordCloudSearch(keyword);
+                    resultItems = await this.service.keywordCloudSearch(keyword, {isCloud: 1});
                 }else if(model === "both_mobilenet"){
                     console.log("SearchModule_both_mobilenet");
                     resultItems = await this.service.keywordLocalCloudSearch(keyword);
