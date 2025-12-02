@@ -82,7 +82,7 @@ class serviceConfig {
     const notifyService = new NotifyService(
       clipboardRepo,
       clipboardService,
-      syncCoordinator
+      cloudService
     );
     const searchService = new SearchService(clipboardRepo, uploadClient); // 인증 & 갱신 포함된 axios 주입 (CloudService.uploadClient 재사용)
 
@@ -96,6 +96,7 @@ class serviceConfig {
       SyncCoordinator: syncCoordinator,
       NotifyService: notifyService,
       SearchService: searchService,
+      ClipboardRepository: clipboardRepo, // AuthModule에서 사용
     };
 
     console.log(

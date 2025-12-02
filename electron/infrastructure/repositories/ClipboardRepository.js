@@ -37,10 +37,18 @@ class ClipboardRepository {
       const row = stmt.get(id);
       if (!row) return null;
 
-      // Get tags
       const tags = this._getTags(id);
-      // Get image meta
-      const meta = this._getImageMeta(id);
+      
+      const meta = (row.width || row.height || row.file_path)
+        ? {
+            data_id: id,
+            width: row.width,
+            height: row.height,
+            file_size: row.file_size,
+            file_path: row.file_path,
+            thumbnail_path: row.thumbnail_path
+          }
+        : null;
 
       return this._mapToDto(row, meta, tags);
     } catch (error) {
@@ -70,7 +78,16 @@ class ClipboardRepository {
       const rows = stmt.all();
       return rows.map((row) => {
         const tags = this._getTags(row.id);
-        const meta = this._getImageMeta(row.id);
+        const meta = (row.width || row.height || row.file_path)
+          ? {
+              data_id: row.id,
+              width: row.width,
+              height: row.height,
+              file_size: row.file_size,
+              file_path: row.file_path,
+              thumbnail_path: row.thumbnail_path
+            }
+          : null;
         return this._mapToDto(row, meta, tags);
       });
     } catch (error) {
@@ -114,22 +131,34 @@ class ClipboardRepository {
    * @returns {Promise<void>}
    */
   async save(item, meta) {
+    console.log(`[ClipboardRepository] save called:`, {
+      id: item.id,
+      type: item.type,
+      hasMeta: !!meta,
+      meta: meta,
+    });
+
     const now = Math.floor(Date.now() / 1000);
     const tx = this.db.transaction(() => {
       // Save to clipboard table
       const stmt = this.db.prepare(`
         INSERT OR REPLACE INTO clipboard 
-        (id, type, format, content, is_synced, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (id, type, format, content, is_synced, is_cloud_item, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
-      stmt.run(
+      const clipboardResult = stmt.run(
         item.id,
         item.type,
         item.format,
         item.content,
         item.is_synced || 0,
+        item.is_cloud_item || 0,
         item.created_at || now
       );
+
+      console.log(`[ClipboardRepository] Clipboard insert:`, {
+        changes: clipboardResult.changes,
+      });
 
       // Save to image_meta if exists
       if (meta) {
@@ -138,7 +167,7 @@ class ClipboardRepository {
           (data_id, width, height, file_size, file_path, thumbnail_path)
           VALUES (?, ?, ?, ?, ?, ?)
         `);
-        metaStmt.run(
+        const metaResult = metaStmt.run(
           item.id,
           meta.width,
           meta.height,
@@ -146,12 +175,19 @@ class ClipboardRepository {
           meta.file_path,
           meta.thumbnail_path
         );
+
+        console.log(`[ClipboardRepository] Image_meta insert:`, {
+          changes: metaResult.changes,
+          data_id: item.id,
+        });
       }
     });
 
     try {
       tx();
+      console.log(`[ClipboardRepository] Transaction completed for ${item.id}`);
     } catch (error) {
+      console.error(`[ClipboardRepository] Transaction failed:`, error);
       throw CCDError.create("E610", {
         module: "ClipboardRepository",
         context: "save",
@@ -246,6 +282,11 @@ class ClipboardRepository {
    * @param {object} paths { file_path?: string, thumbnail_path?: string }
    */
   updateImagePaths(id, { file_path, thumbnail_path }) {
+    console.log(`[ClipboardRepository] updateImagePaths(${id}):`, {
+      file_path,
+      thumbnail_path,
+    });
+
     const updates = [];
     const params = [];
 
@@ -259,7 +300,10 @@ class ClipboardRepository {
     }
 
     // 업데이트할 내용이 없으면 종료
-    if (updates.length === 0) return;
+    if (updates.length === 0) {
+      console.log(`[ClipboardRepository] No paths to update for ${id}`);
+      return;
+    }
 
     params.push(id); // WHERE 조건용 id
 
@@ -269,7 +313,11 @@ class ClipboardRepository {
     WHERE data_id = ?
   `);
 
-    stmt.run(...params);
+    const result = stmt.run(...params);
+    console.log(`[ClipboardRepository] updateImagePaths result:`, {
+      changes: result.changes,
+      affectedRows: result.changes,
+    });
   }
 
   // --- Private helper methods ---
@@ -395,6 +443,30 @@ class ClipboardRepository {
       throw CCDError.create("E610", {
         module: "ClipboardRepository",
         context: "markAsSynced",
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Delete all cloud items (called on logout/app exit)
+   * @returns {number} Number of deleted items
+   */
+  deleteAllCloudItems() {
+    try {
+      const stmt = this.db.prepare(`
+        DELETE FROM clipboard WHERE is_cloud_item = 1
+      `);
+      const result = stmt.run();
+
+      console.log(
+        `[ClipboardRepository] Deleted ${result.changes} cloud items`
+      );
+      return result.changes;
+    } catch (error) {
+      throw CCDError.create("E630", {
+        module: "ClipboardRepository",
+        context: "deleteAllCloudItems",
         message: error.message,
       });
     }

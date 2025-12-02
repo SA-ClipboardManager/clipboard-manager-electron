@@ -187,7 +187,10 @@ class AuthService extends EventEmitter {
         )
       );
     } finally {
+      // 토큰 삭제
       await this.tokenStorage.clear();
+
+      // 클라우드 데이터 삭제 이벤트 발생 (AuthModule에서 처리)
       this.emit("logout-success");
     }
     return true;

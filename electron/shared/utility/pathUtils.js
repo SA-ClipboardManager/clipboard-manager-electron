@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 
 const root = path.join(app.getPath("documents"), "CCD");
+const imagesDir = path.join(app.getPath("userData"), "images");
 
 const makeFileUrl = (absPath) => {
   if (!absPath) return null;
@@ -16,6 +17,18 @@ const makeFileUrl = (absPath) => {
   } catch (e) {
     // stat 실패하면 그대로 진행 (나중에 접근 시 404 처리)
   }
+
+  // Check if path is under cloud images directory (AppData/ccd-electron/images)
+  if (absPath.includes(imagesDir)) {
+    const rel = path.relative(imagesDir, absPath);
+    if (!rel.startsWith("..")) {
+      // Valid path under images directory
+      const posix = rel.split(path.sep).join("/");
+      return `ccd://images/${encodeURI(posix)}`;
+    }
+  }
+
+  // Otherwise, use the Documents/CCD root
   const rel = path.relative(root, absPath);
   if (!rel) return null; // root 자체일 경우 생성 안함
   const posix = rel.split(path.sep).join("/");
@@ -26,7 +39,15 @@ const resolveCcdUrl = (ccdUrl) => {
   if (!ccdUrl || !ccdUrl.startsWith("ccd://")) return ccdUrl;
   const encoded = ccdUrl.replace(/^ccd:\/\//, "");
   const decodedPosix = decodeURI(encoded);
-  // Convert posix path back to platform path
+
+  // Check if this is a cloud images path (ccd://images/...)
+  if (decodedPosix.startsWith("images/")) {
+    const relPath = decodedPosix.substring("images/".length);
+    const platformSegments = relPath.split("/").filter(Boolean);
+    return path.join(imagesDir, ...platformSegments);
+  }
+
+  // Otherwise, use Documents/CCD root
   const platformSegments = decodedPosix.split("/").filter(Boolean);
   return path.join(root, ...platformSegments);
 };

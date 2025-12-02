@@ -7,8 +7,19 @@ const CCDError = require("../../shared/errors/CCDError");
 
 class DatabaseContext {
   constructor() {
-    this.dbPath = path.join(app.getPath("userData"), "clipboard-manager.db");
+    // 환경변수로 인스턴스 ID 설정 가능 (다중 인스턴스 테스트용)
+    const instanceId = process.env.ELECTRON_INSTANCE_ID || "default";
+    const dbFileName =
+      instanceId === "default"
+        ? "clipboard-manager.db"
+        : `clipboard-manager-${instanceId}.db`;
+
+    this.dbPath = path.join(app.getPath("userData"), dbFileName);
     this.db = null;
+
+    console.log(
+      `[DatabaseContext] Instance: ${instanceId}, DB: ${this.dbPath}`
+    );
   }
 
   /**

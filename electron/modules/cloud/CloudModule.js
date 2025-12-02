@@ -25,9 +25,15 @@ class CloudModule extends BaseModule {
 
   _transformItemPaths(item) {
     if (item.type === "img") {
-      item.content = makeFileUrl(item.content);
+      const contentUrl = makeFileUrl(item.content);
+      if (contentUrl) {
+        item.content = contentUrl;
+      }
       if (item.meta && item.meta.thumbnail_path) {
-        item.meta.thumbnail_path = makeFileUrl(item.meta.thumbnail_path);
+        const thumbnailUrl = makeFileUrl(item.meta.thumbnail_path);
+        if (thumbnailUrl) {
+          item.meta.thumbnail_path = thumbnailUrl;
+        }
       }
     }
     return item;
@@ -43,13 +49,59 @@ class CloudModule extends BaseModule {
   _setupWebSocketForwarding() {
     const wsManager = this.cloudService.wsManager;
 
-    wsManager.on("sync-notification", (data) => {
-      console.log("[CloudModule] Sync notification from server:", data);
+    wsManager.on("sync-notification", async (data) => {
+      // Extract item ID from either data.id or data.data_id
+      const itemId = data.data_id || data.id;
 
-      const items = Array.isArray(data) ? data : [data];
-      const transformedItems = items.map(this._transformItemPaths);
+      console.log(`[CloudModule] Sync notification received:`, {
+        itemId,
+        data_id: data.data_id,
+        id: data.id,
+        event: data.event,
+        isProcessing: this.syncCoordinator.isItemProcessing(itemId),
+      });
 
-      this._sendToRenderer("sync-notification", transformedItems);
+      // If an item is currently being uploaded by this client, its state will be
+      // managed by the upload-success event, not by this general sync event.
+      // Ignoring this prevents a race condition where this incomplete WS event
+      // overwrites the local item meta before the upload is finished.
+      if (itemId && this.syncCoordinator.isItemProcessing(itemId)) {
+        console.log(
+          `[CloudModule] ⚠️ IGNORING sync-notification for item currently being uploaded: ${itemId}`
+        );
+        return;
+      }
+
+      console.log(
+        "[CloudModule] Processing sync notification from server:",
+        data
+      );
+
+      try {
+        // data_id가 있는 경우 (crud:imgSave_success, crud:txtSave_success 등)
+        if (data.data_id) {
+          // 서버에서 해당 아이템의 전체 정보를 다시 조회
+          const response = await this.cloudService.uploadClient.get(
+            `/api/v1/clipboard/${data.data_id}`
+          );
+          const fullItem = response.data;
+
+          // 전체 정보로 저장
+          await this.cloudService._saveRemoteItemToLocal(fullItem);
+          console.log("[CloudModule] Item saved to local DB:", data.data_id);
+
+          // Renderer에 알림 전송하여 UI 갱신
+          this._sendToRenderer("sync-notification", fullItem);
+        } else {
+          // 기존 로직 (전체 아이템 정보가 포함된 경우)
+          await this.cloudService._saveRemoteItemToLocal(data);
+          console.log("[CloudModule] Item saved to local DB:", data.id);
+
+          this._sendToRenderer("sync-notification", data);
+        }
+      } catch (error) {
+        console.error("[CloudModule] Failed to save synced item:", error);
+      }
     });
 
     wsManager.on("item-updated", (data) => {
@@ -71,12 +123,26 @@ class CloudModule extends BaseModule {
   _setupSyncEventForwarding() {
     this.syncCoordinator.on("upload-success", (data) => {
       console.log("[CloudModule] Upload success:", data.itemId);
-      this._sendToRenderer("upload-success", data);
-      if (data.item) {
-        // 개별 항목 최신화 전달 (아이콘 상태 등)
-        const transformed = this._transformItemPaths(data.item);
-        this._sendToRenderer("item-updated", transformed);
+      console.log(
+        "[CloudModule] Upload success data:",
+        JSON.stringify(data, null, 2)
+      );
+
+      if (!data.item) {
+        console.error(
+          "[CloudModule] ⚠️ WARNING: data.item is missing in upload-success event!"
+        );
+      } else {
+        console.log("[CloudModule] Transforming item paths...");
+        data.item = this._transformItemPaths(data.item);
+        console.log(
+          "[CloudModule] Transformed item:",
+          JSON.stringify(data.item, null, 2)
+        );
       }
+
+      console.log("[CloudModule] Sending upload-success to renderer...");
+      this._sendToRenderer("upload-success", data);
     });
 
     this.syncCoordinator.on("upload-failed", (data) => {

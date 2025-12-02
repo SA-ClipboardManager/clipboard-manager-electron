@@ -29,11 +29,17 @@ class NotifyService {
     if (item.type === "img") {
       // Prioritize thumbnail for UI display, fallback to original content
       const displayPath = item.meta?.thumbnail_path || item.content;
-      item.content = makeFileUrl(displayPath);
+      const fileUrl = makeFileUrl(displayPath);
+      if (fileUrl) {
+        item.content = fileUrl;
+      }
 
       // Also transform the thumbnail_path in meta for consistency
       if (item.meta?.thumbnail_path) {
-        item.meta.thumbnail_path = makeFileUrl(item.meta.thumbnail_path);
+        const thumbnailUrl = makeFileUrl(item.meta.thumbnail_path);
+        if (thumbnailUrl) {
+          item.meta.thumbnail_path = thumbnailUrl;
+        }
       }
     }
     return item;

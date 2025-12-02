@@ -15,6 +15,16 @@ class SyncCoordinator extends EventEmitter {
     this.isProcessing = false;
     this.pollingInterval = null;
     this.INTERVAL_MS = 5000; // 5초마다 확인
+    this.processingItems = new Set(); // 현재 처리 중인 아이템 ID 추적
+  }
+
+  /**
+   * [Public] 특정 아이템이 현재 처리(업로드) 중인지 확인
+   * @param {string} itemId
+   * @returns {boolean}
+   */
+  isItemProcessing(itemId) {
+    return this.processingItems.has(itemId);
   }
 
   /**
@@ -55,6 +65,29 @@ class SyncCoordinator extends EventEmitter {
   }
 
   /**
+   * [Public] 아이템 삭제 요청
+   * @param {string} itemId - 삭제할 아이템 ID
+   * @param {string} deleteOption - 삭제 옵션 ('local', 'cloud', 'both')
+   */
+  async requestDelete(itemId, deleteOption = "both") {
+    try {
+      console.log(
+        `[SyncCoordinator] Delete request: ${itemId}, option: ${deleteOption}`
+      );
+
+      if (deleteOption === "cloud" || deleteOption === "both") {
+        // 클라우드 삭제 요청
+        await this.cloudService.deleteItem(itemId);
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error(`[SyncCoordinator] Delete failed for ${itemId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * [Private] Outbox 처리 메인 루프
    */
   async _processOutbox() {
@@ -88,6 +121,9 @@ class SyncCoordinator extends EventEmitter {
    * [Private] 개별 아이템 처리 로직
    */
   async _processSingleItem(outboxItem) {
+    const itemId = outboxItem.data_id;
+    this.processingItems.add(itemId); // 처리 시작 표시
+
     try {
       // 1. 처리 중 상태로 변경 (선택사항: 멀티 프로세스 환경 대비)
       // await this.outboxRepo.markAsProcessing([outboxItem.id]);
@@ -98,20 +134,20 @@ class SyncCoordinator extends EventEmitter {
 
       // 3. 성공 처리
       this.outboxRepo.markAsCompleted(outboxItem.id);
-      console.log(`[SyncCoordinator] Sync Success: ${outboxItem.data_id}`);
+      console.log(`[SyncCoordinator] Sync Success: ${itemId}`);
       // 렌더러로 전달할 업로드 성공 이벤트 발생
       this.emit("upload-success", {
-        itemId: outboxItem.data_id,
+        itemId: itemId,
         result,
         item: result.local,
       });
     } catch (error) {
       console.error(
-        `[SyncCoordinator] Sync Failed for ${outboxItem.data_id}:`,
+        `[SyncCoordinator] Sync Failed for ${itemId}:`,
         error.message
       );
       // 업로드 실패 이벤트 발생
-      this.emit("upload-failed", { itemId: outboxItem.data_id, error });
+      this.emit("upload-failed", { itemId: itemId, error });
 
       // 4. 실패 처리 (재시도 횟수 확인)
       const MAX_RETRIES = 5;
@@ -124,6 +160,8 @@ class SyncCoordinator extends EventEmitter {
           outboxItem.retry_count + 1
         );
       }
+    } finally {
+      this.processingItems.delete(itemId); // 처리 종료 표시
     }
   }
 }

@@ -11,6 +11,7 @@ class WebSocketManager extends EventEmitter {
     this.reconnectInterval = 5000;
     this.heartbeatTimer = null;
     this.reconnectTimer = null;
+    this.shouldReconnect = true; // 재연결 활성화 플래그
   }
 
   /**
@@ -21,6 +22,7 @@ class WebSocketManager extends EventEmitter {
   connect(userId, token) {
     this.userId = userId;
     this.token = token;
+    this.shouldReconnect = true; // 연결 시작 시 재연결 활성화
     const correlationId = CorrelationId.generate();
     const url = `${this.apiBaseURL}/ws/${userId}`;
 
@@ -74,6 +76,7 @@ class WebSocketManager extends EventEmitter {
    */
   disconnect() {
     console.log("[WebSocketManager] Disconnecting");
+    this.shouldReconnect = false; // 재연결 비활성화
     this._clearHeartbeat();
     this._clearReconnect();
 
@@ -82,6 +85,7 @@ class WebSocketManager extends EventEmitter {
       this.ws = null;
     }
     this.userId = null;
+    this.token = null;
   }
 
   /**
@@ -111,6 +115,12 @@ class WebSocketManager extends EventEmitter {
    * 재연결 설정 (private)
    */
   _setupReconnect() {
+    // 재연결이 비활성화되었으면 스킵 (로그아웃 등)
+    if (!this.shouldReconnect) {
+      console.log("[WebSocketManager] Reconnect disabled, skipping...");
+      return;
+    }
+
     this._clearReconnect();
 
     this.reconnectTimer = setTimeout(() => {
@@ -153,16 +163,30 @@ class WebSocketManager extends EventEmitter {
    */
   _handleMessage(message) {
     const correlationId = message[CorrelationId.WS_FIELD_NAME];
+
+    // 서버는 'event' 필드를 사용하지만, 클라이언트는 'type'을 기대
+    // event -> type으로 매핑
+    const messageType = message.type || message.event;
+
     console.log(
       CorrelationId.formatLog(
         correlationId,
-        `Received WS message: ${message.type}`
+        `Received WS message: ${messageType}`
       )
     );
 
-    switch (message.type) {
+    switch (messageType) {
       case "pong":
         // Heartbeat 응답
+        break;
+
+      case "crud:txtSave_success":
+      case "crud:imgSave_success":
+      case "clip_created":
+      case "clip_synced_tags":
+      case "data_deleted":
+        // 다른 디바이스에서 동기화 발생
+        this.emit("sync-notification", message.data);
         break;
 
       case "sync-notification":
@@ -176,6 +200,12 @@ class WebSocketManager extends EventEmitter {
         break;
 
       default:
+        console.log(
+          CorrelationId.formatLog(
+            correlationId,
+            `Unknown message type: ${messageType}`
+          )
+        );
         this.emit("message", message);
     }
   }

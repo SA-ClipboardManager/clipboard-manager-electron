@@ -66,4 +66,33 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("initial-sync-complete", (_, payload) => callback(payload)),
   offInitialSyncComplete: (callback) =>
     ipcRenderer.removeListener("initial-sync-complete", callback),
+
+  // 실시간 동기화 알림 (다른 디바이스에서 변경)
+  onSyncNotification: (callback) =>
+    ipcRenderer.on("sync-notification", (_, data) => callback(data)),
+  offSyncNotification: (callback) =>
+    ipcRenderer.removeListener("sync-notification", callback),
+
+  // 클라우드 데이터 삭제 알림 (로그아웃 시)
+  onCloudDataCleared: (callback) =>
+    ipcRenderer.on("cloud-data-cleared", () => callback()),
+  offCloudDataCleared: (callback) =>
+    ipcRenderer.removeListener("cloud-data-cleared", callback),
+
+  // 업로드 성공/실패 알림
+  onUploadSuccess: (callback) =>
+    ipcRenderer.on("upload-success", (_, data) => callback(data)),
+  offUploadSuccess: (callback) =>
+    ipcRenderer.removeListener("upload-success", callback),
+
+  onUploadFailed: (callback) =>
+    ipcRenderer.on("upload-failed", (_, data) => callback(data)),
+  offUploadFailed: (callback) =>
+    ipcRenderer.removeListener("upload-failed", callback),
+
+  // 아이템 업데이트 알림
+  onItemUpdated: (callback) =>
+    ipcRenderer.on("item-updated", (_, data) => callback(data)),
+  offItemUpdated: (callback) =>
+    ipcRenderer.removeListener("item-updated", callback),
 });

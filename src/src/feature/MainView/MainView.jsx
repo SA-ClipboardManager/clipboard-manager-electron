@@ -151,13 +151,26 @@ const MainView = ({
           >
             <div className="relative  !h-[9.2rem] bg-blue-100">
               {/* Status text badges removed per request; use icons only */}
-              {item.type === "image" && (
+              {item.type === "image" && (item.thumbnail_path || item.src) && (
                 <>
                   <img
-                    src={`ccd://${item.thumbnail_path ?? item.src}`}
+                    src={(() => {
+                      const imgSrc = item.thumbnail_path ?? item.src;
+                      // HTTP URL이면 그대로 사용, 아니면 ccd:// 프로토콜 추가
+                      return imgSrc?.startsWith("http")
+                        ? imgSrc
+                        : `ccd://${imgSrc}`;
+                    })()}
                     alt="dropped-img"
                     className="w-full h-[9.2rem] object-cover"
                     onClick={() => handlePaste(item.itemId)}
+                    onError={(e) => {
+                      console.error(
+                        "Failed to load image:",
+                        item.thumbnail_path ?? item.src
+                      );
+                      e.target.style.display = "none";
+                    }}
                   />
                 </>
               )}

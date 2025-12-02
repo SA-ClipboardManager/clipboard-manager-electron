@@ -9,6 +9,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "electron-vite dev",
+    "dev:device1": "cross-env ELECTRON_INSTANCE_ID=device1 electron-vite dev",
+    "dev:device2": "cross-env ELECTRON_INSTANCE_ID=device2 electron-vite dev",
     "build": "electron-vite build",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "npm run rebuild"
@@ -18,6 +20,7 @@
     "@tailwindcss/line-clamp": "^0.4.4",
     "@vitejs/plugin-react": "^5.1.0",
     "autoprefixer": "^10.4.22",
+    "cross-env": "^7.0.3",
     "electron": "^33.4.11",
     "electron-builder": "^26.0.12",
     "electron-rebuild": "^3.2.9",

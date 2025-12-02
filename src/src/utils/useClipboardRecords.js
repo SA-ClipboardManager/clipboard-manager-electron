@@ -6,6 +6,16 @@ import {
   offClipboardUpdated,
   onInitialSyncComplete,
   offInitialSyncComplete,
+  onSyncNotification,
+  offSyncNotification,
+  onCloudDataCleared,
+  offCloudDataCleared,
+  onUploadSuccess,
+  offUploadSuccess,
+  onUploadFailed,
+  offUploadFailed,
+  onItemUpdated,
+  offItemUpdated,
   deleteItem,
 } from "./electronService";
 
@@ -13,20 +23,37 @@ const useClipboardRecords = () => {
   const [items, setItems] = useState([]);
 
   // 포맷 공통 함수
-  const formatItem = (item) => ({
-    ...item,
-    selected: false,
-    itemId: item.itemId ?? item.id ?? uuidv4(),
-    type:
-      item.type === "txt" ? "text" : item.type === "img" ? "image" : item.type,
-    src: item.type === "img" ? item.content : undefined,
-    content: item.type === "txt" ? item.content : undefined,
-    timestamp: item.created_at ?? Date.now(),
-    fileName: item.fileName ?? "unnamed",
-    ext: item.format?.split("/")?.[1] ?? "unknown",
-    shared: item.shared ?? "local",
-    tags: item.tags ?? [],
-  });
+  const formatItem = (item) => {
+    const formatted = {
+      ...item,
+      selected: false,
+      itemId: item.itemId ?? item.id ?? uuidv4(),
+      type:
+        item.type === "txt"
+          ? "text"
+          : item.type === "img"
+          ? "image"
+          : item.type,
+      timestamp: item.created_at ?? item.createdAt ?? Date.now(),
+      fileName: item.fileName ?? "unnamed",
+      ext: item.format?.split("/")?.[1] ?? "unknown",
+      shared: item.shared ?? (item.isSynced ? "both" : "local"),
+      tags: item.tags ?? [],
+    };
+
+    // 이미지인 경우 src와 thumbnail_path 설정
+    if (item.type === "img") {
+      // 썸네일 경로 우선, 없으면 content 사용
+      formatted.src = item.meta?.thumbnail_path || item.content;
+      formatted.thumbnail_path = item.meta?.thumbnail_path;
+      formatted.file_path = item.meta?.file_path;
+      formatted.content = item.content;
+    } else if (item.type === "txt") {
+      formatted.content = item.content;
+    }
+
+    return formatted;
+  };
 
   //메인프로세스에서 전체 클립보드 기록 가져오기
   const refetch = useCallback(async () => {
@@ -90,17 +117,86 @@ const useClipboardRecords = () => {
     return () => offInitialSyncComplete?.(handler);
   }, [refetch]);
 
+  // 실시간 동기화 알림 처리 (다른 디바이스에서 변경)
+  useEffect(() => {
+    const handler = (data) => {
+      console.log("[sync-notification] Other device changed:", data);
+      // 서버에서 새 데이터가 들어왔으므로 전체 재조회
+      refetch();
+    };
+    onSyncNotification?.(handler);
+    return () => offSyncNotification?.(handler);
+  }, [refetch]);
+
+  // 로그아웃 시 클라우드 데이터 삭제 알림 처리
+  useEffect(() => {
+    const handler = () => {
+      console.log("[cloud-data-cleared] Refreshing UI after logout cleanup");
+      refetch();
+    };
+    onCloudDataCleared?.(handler);
+    return () => {
+      offCloudDataCleared?.(handler);
+    };
+  }, [refetch]);
+
   // 업로드 성공 이벤트 처리
   useEffect(() => {
     const handleUploadSuccess = (data) => {
-      console.log("[Upload Success]", data.itemId);
-      setItems((prev) =>
-        prev.map((item) =>
-          item.itemId === data.itemId || item.id === data.itemId
-            ? { ...item, shared: "both" }
-            : item
-        )
-      );
+      console.log("[Upload Success] Received:", {
+        itemId: data.itemId,
+        hasItem: !!data.item,
+        item: data.item,
+      });
+
+      // data.item에 업데이트된 전체 정보가 있으면 병합
+      if (data.item) {
+        const updatedItem = formatItem(data.item);
+        console.log("[Upload Success] Formatted item:", updatedItem);
+
+        setItems((prev) => {
+          const updated = prev.map((item) => {
+            if (item.itemId === data.itemId || item.id === data.itemId) {
+              console.log("[Upload Success] Updating item:", {
+                before: item,
+                after: { ...item, ...updatedItem, shared: "both" },
+              });
+              return { ...item, ...updatedItem, shared: "both" };
+            }
+            return item;
+          });
+          return updated;
+        });
+      } else {
+        // item 정보가 없으면 shared만 업데이트 (fallback)
+        setItems((prev) =>
+          prev.map((item) =>
+            item.itemId === data.itemId || item.id === data.itemId
+              ? { ...item, shared: "both" }
+              : item
+          )
+        );
+      }
+    };
+
+    const handleItemUpdated = (updatedItem) => {
+      console.log("[Item Updated] Received:", updatedItem);
+      const formatted = formatItem(updatedItem);
+      console.log("[Item Updated] Formatted:", formatted);
+
+      setItems((prev) => {
+        const updated = prev.map((item) => {
+          if (item.itemId === updatedItem.id || item.id === updatedItem.id) {
+            console.log("[Item Updated] Updating item:", {
+              before: item,
+              after: { ...item, ...formatted },
+            });
+            return { ...item, ...formatted };
+          }
+          return item;
+        });
+        return updated;
+      });
     };
 
     const handleUploadFailed = (data) => {
@@ -108,22 +204,14 @@ const useClipboardRecords = () => {
       // UI에 실패 표시를 원하면 여기서 처리
     };
 
-    window.electron?.ipcRenderer?.on("upload-success", (event, data) =>
-      handleUploadSuccess(data)
-    );
-    window.electron?.ipcRenderer?.on("upload-failed", (event, data) =>
-      handleUploadFailed(data)
-    );
+    onUploadSuccess?.(handleUploadSuccess);
+    onItemUpdated?.(handleItemUpdated);
+    onUploadFailed?.(handleUploadFailed);
 
     return () => {
-      window.electron?.ipcRenderer?.removeListener(
-        "upload-success",
-        handleUploadSuccess
-      );
-      window.electron?.ipcRenderer?.removeListener(
-        "upload-failed",
-        handleUploadFailed
-      );
+      offUploadSuccess?.(handleUploadSuccess);
+      offItemUpdated?.(handleItemUpdated);
+      offUploadFailed?.(handleUploadFailed);
     };
   }, []);
 

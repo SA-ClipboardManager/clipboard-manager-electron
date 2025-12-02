@@ -3,12 +3,43 @@ const CCDError = require("../../shared/errors/CCDError");
 
 class AuthModule extends BaseModule {
   constructor(services) {
-  super(services, "auth");
-  this.service = services.AuthService;  // Changed from app.service.AuthService to services.AuthService
-  if (!this.service) {
-    console.error("AuthService not initialized.");
+    super(services, "auth");
+    this.service = services.AuthService;
+    this.clipboardRepository = services.ClipboardRepository;
+
+    if (!this.service) {
+      console.error("AuthService not initialized.");
+    }
+
+    // 로그아웃 시 클라우드 데이터 삭제
+    this.service.on("logout-success", () => {
+      this._cleanupCloudData();
+    });
   }
-}
+
+  /**
+   * 로그아웃 시 클라우드 아이템 삭제
+   * @private
+   */
+  _cleanupCloudData() {
+    try {
+      if (this.clipboardRepository) {
+        const deletedCount = this.clipboardRepository.deleteAllCloudItems();
+        console.log(
+          `[AuthModule] Cleaned up ${deletedCount} cloud items on logout`
+        );
+
+        // 렌더러에 알림을 보내서 UI 갱신
+        const { BrowserWindow } = require("electron");
+        const win = BrowserWindow.getAllWindows()[0];
+        if (win && win.webContents) {
+          win.webContents.send("cloud-data-cleared");
+        }
+      }
+    } catch (error) {
+      console.error("[AuthModule] Failed to cleanup cloud data:", error);
+    }
+  }
 
   registerIpcHandler(ipcMain) {
     ipcMain.handle("user-login", async (_, { userId, password }) => {

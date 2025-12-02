@@ -168,6 +168,55 @@ class CloudService extends EventEmitter {
     // 로컬 DB 상태 갱신 (is_synced / is_cloud_item)
     try {
       this.clipboardRepo.markAsSynced(item.id);
+
+      // 서버 응답에서 이미지 메타 정보를 받아서 로컬 DB 업데이트
+      if (item.type === "img" && response.data.image_meta) {
+        const serverMeta = response.data.image_meta;
+
+        // 서버 URL을 로컬에서 다운로드하여 저장
+        let localFilePath = item.meta?.file_path;
+        let localThumbnailPath = item.meta?.thumbnail_path;
+
+        // 썸네일 다운로드
+        if (serverMeta.thumbnail_path) {
+          try {
+            const filename = `thumb_${item.id}.jpg`;
+            const url = serverMeta.thumbnail_path.startsWith("http")
+              ? serverMeta.thumbnail_path
+              : `${this.apiBaseURL}${serverMeta.thumbnail_path}`;
+            localThumbnailPath = await this._downloadImage(
+              url,
+              filename,
+              correlationId
+            );
+            console.log(
+              CorrelationId.formatLog(
+                correlationId,
+                `Thumbnail downloaded: ${localThumbnailPath}`
+              )
+            );
+          } catch (e) {
+            console.warn(
+              CorrelationId.formatLog(
+                correlationId,
+                `Thumbnail download failed: ${e.message}`
+              )
+            );
+          }
+        }
+
+        // 로컬 DB의 이미지 경로 업데이트
+        await this.clipboardRepo.updateImagePaths(item.id, {
+          file_path: localFilePath,
+          thumbnail_path: localThumbnailPath,
+        });
+        console.log(
+          CorrelationId.formatLog(
+            correlationId,
+            `Image paths updated in DB for ${item.id}`
+          )
+        );
+      }
     } catch (e) {
       console.warn(
         CorrelationId.formatLog(
@@ -179,7 +228,61 @@ class CloudService extends EventEmitter {
 
     // 최신 DTO 다시 조회 후 반환 (SyncCoordinator/CloudModule가 UI 반영에 활용)
     const updated = await this.clipboardRepo.getById(item.id);
+    console.log(
+      CorrelationId.formatLog(
+        correlationId,
+        `Returning updated item for ${item.id}:`
+      )
+    );
+    console.log(JSON.stringify(updated, null, 2));
+
+    if (!updated) {
+      console.error(
+        CorrelationId.formatLog(
+          correlationId,
+          `⚠️ WARNING: Updated item is null/undefined!`
+        )
+      );
+    }
+
     return { server: response.data, local: updated };
+  }
+
+  /**
+   * 클라우드에서 아이템 삭제
+   * @param {string} itemId - 삭제할 아이템 ID
+   */
+  async deleteItem(itemId) {
+    const correlationId = CorrelationId.generate();
+
+    try {
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Deleting item from cloud: ${itemId}`
+        )
+      );
+
+      await this.uploadClient.delete(`/api/v1/clipboard/${itemId}`, {
+        headers: {
+          [CorrelationId.HEADER_NAME]: correlationId,
+        },
+      });
+
+      console.log(
+        CorrelationId.formatLog(correlationId, `Delete successful: ${itemId}`)
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error(
+        CorrelationId.formatLog(
+          correlationId,
+          `Delete failed: ${itemId} - ${error.message}`
+        )
+      );
+      throw error;
+    }
   }
 
   /**
@@ -303,22 +406,27 @@ class CloudService extends EventEmitter {
       type: remoteItem.type,
       format: remoteItem.format,
       content: remoteItem.content || "",
-      createdAt: createdAt,
-      isSynced: true,
+      created_at: createdAt, // snake_case로 변경
+      is_synced: 1, // boolean -> number
+      is_cloud_item: 1, // boolean -> number
     };
 
     let meta = null;
     if (remoteItem.type === "img" && remoteItem.image_meta) {
       let localThumbnailPath = "";
+      let localFilePath = "";
 
-      // 1. 썸네일 우선 다운로드
-      if (remoteItem.image_meta.thumbnail_url) {
+      // 1. 썸네일 다운로드
+      const thumbnailUrl =
+        remoteItem.image_meta.thumbnail_url ||
+        remoteItem.image_meta.thumbnail_path;
+      if (thumbnailUrl) {
         try {
           const filename = `thumb_${remoteItem.id}.jpg`;
           // full url이 아니라 상대경로라면 base url 붙여야 함
-          const url = remoteItem.image_meta.thumbnail_url.startsWith("http")
-            ? remoteItem.image_meta.thumbnail_url
-            : `${this.apiBaseURL}${remoteItem.image_meta.thumbnail_url}`;
+          const url = thumbnailUrl.startsWith("http")
+            ? thumbnailUrl
+            : `${this.apiBaseURL}${thumbnailUrl}`;
 
           localThumbnailPath = await this._downloadImage(
             url,
@@ -335,12 +443,37 @@ class CloudService extends EventEmitter {
         }
       }
 
+      // 2. 원본 이미지도 바로 다운로드 (content 또는 file_path 사용)
+      const fileUrl = remoteItem.content || remoteItem.image_meta.file_path;
+      if (fileUrl) {
+        try {
+          const filename = `original_${remoteItem.id}.${
+            remoteItem.format || "png"
+          }`;
+          const url = fileUrl.startsWith("http")
+            ? fileUrl
+            : `${this.apiBaseURL}${fileUrl}`;
+
+          localFilePath = await this._downloadImage(
+            url,
+            filename,
+            correlationId
+          );
+        } catch (e) {
+          console.warn(
+            CorrelationId.formatLog(
+              correlationId,
+              `Original image download failed for ${remoteItem.id}: ${e.message}`
+            )
+          );
+        }
+      }
+
       meta = {
         width: remoteItem.image_meta.width,
         height: remoteItem.image_meta.height,
         file_size: remoteItem.image_meta.file_size,
-        // ★ 중요: 원본 경로는 비워둠 (Lazy Loading)
-        file_path: "",
+        file_path: localFilePath,
         thumbnail_path: localThumbnailPath,
       };
     }
