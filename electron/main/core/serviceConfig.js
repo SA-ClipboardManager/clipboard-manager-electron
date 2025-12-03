@@ -97,6 +97,7 @@ class serviceConfig {
       NotifyService: notifyService,
       SearchService: searchService,
       ClipboardRepository: clipboardRepo, // AuthModule에서 사용
+      DatabaseContext: this.infrastructure.dbContext, // CloudModule에서 TaggingSync 생성 시 사용
     };
 
     console.log(
