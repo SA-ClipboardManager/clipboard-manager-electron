@@ -22,14 +22,6 @@ export const offClipboardUpdated = (handler) => {
   window.electronAPI?.offClipboardUpdated?.(handler);
 };
 
-export const saveDroppedWebImage = async (data) => {
-  return window.electronAPI?.saveDroppedWebImage?.(data);
-};
-
-export const saveDroppedWebText = async (data) => {
-  return window.electronAPI?.saveDroppedWebText?.(data);
-};
-
 export const pasteItem = async (id) => {
   return window.electronAPI?.pasteItem?.(id);
 };
