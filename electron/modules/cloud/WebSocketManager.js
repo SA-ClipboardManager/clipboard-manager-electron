@@ -199,6 +199,15 @@ class WebSocketManager extends EventEmitter {
         this.emit("item-updated", message.data);
         break;
 
+      case "tagging_result":
+        // 태깅 결과 수신: 로컬 DB에 반영 이벤트 발생
+        this.emit("tagging-result", {
+          dataId: message.data_id || message.dataId,
+          userId: message.user_id || message.userId,
+          tags: message.tags || []
+        });
+        break;
+
       default:
         console.log(
           CorrelationId.formatLog(
