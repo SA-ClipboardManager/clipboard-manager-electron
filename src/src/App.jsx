@@ -1,17 +1,17 @@
-import "./App.css";
-import "./index.css";
-import React, { useState, useEffect } from "react";
-import "./styles/color.css";
-import "./styles/typography.css";
+import './App.css';
+import './index.css';
+import React, { useState, useEffect } from 'react';
+import './styles/color.css';
+import './styles/typography.css';
 
-import closeUrl from "../assets/X.svg";
+import closeUrl from '../assets/X.svg';
 
-import BottomBar from "./feature/Bottom/BottomBar";
-import SearchBar from "./feature/Search/SearchBar";
-import FilterBar from "./feature/Filter/FilterBar";
-import MainView from "./feature/MainView/MainView";
-import { useClipboard } from "./providers/ClipboardProvider";
-import { closeWindow } from "./utils/electronService";
+import BottomBar from './feature/Bottom/BottomBar';
+import SearchBar from './feature/Search/SearchBar';
+import FilterBar from './feature/Filter/FilterBar';
+import MainView from './feature/MainView/MainView';
+import { useClipboard } from './providers/ClipboardProvider';
+import { closeWindow } from './utils/electronService';
 
 const App = () => {
   const [loginInfo, setLoginInfo] = useState({
@@ -19,44 +19,34 @@ const App = () => {
     userId: null,
   });
   const [isTagChecked, setIsTagChecked] = useState(true);
-  const {
-    items,
-    refetch,
-    toggleSelect,
-    addItem,
-    setItemsFromSearchResult,
-    getSelectedItemIds,
-    setItems,
-  } = useClipboard();
-  const [sinceRaw, setSinceRaw] = useState("");
-  const [untilRaw, setUntilRaw] = useState("");
-  const [fileType, setFileType] = useState("all");
+  const { items, refetch, toggleSelect, addItem, setItemsFromSearchResult, getSelectedItemIds, setItems } = useClipboard();
+  const [sinceRaw, setSinceRaw] = useState('');
+  const [untilRaw, setUntilRaw] = useState('');
+  const [fileType, setFileType] = useState('all');
 
   // 입력 상태 (FilterBar에서 입력하는 값)
-  const [sinceInput, setSinceInput] = useState("");
-  const [untilInput, setUntilInput] = useState("");
-  const [locationInput, setLocationInput] = useState("All");
+  const [sinceInput, setSinceInput] = useState('');
+  const [untilInput, setUntilInput] = useState('');
+  const [locationInput, setLocationInput] = useState('All');
 
   // 실제 필터링에 사용할 적용 상태
-  const [sinceFilter, setSinceFilter] = useState("");
-  const [untilFilter, setUntilFilter] = useState("");
+  const [sinceFilter, setSinceFilter] = useState('');
+  const [untilFilter, setUntilFilter] = useState('');
   const [filteredItems, setFilteredItems] = useState([]);
-  const [locationFilter, setLocationFilter] = useState("All");
+  const [locationFilter, setLocationFilter] = useState('All');
 
   useEffect(() => {
     if (!Array.isArray(items)) return;
 
     const filtered = items.filter((item) => {
       // Location 필터
-      if (locationFilter === "Local" && item.shared !== "local") return false;
-      if (locationFilter === "Cloud" && item.shared !== "cloud") return false;
+      if (locationFilter === 'Local' && item.shared !== 'local') return false;
+      if (locationFilter === 'Cloud' && (item.shared === 'local' || !item.shared)) return false;
 
       // 날짜 필터
       const ts = item.timestamp;
       const date = new Date(ts * 1000);
-      const yyyymmdd = `${date.getFullYear()}${String(
-        date.getMonth() + 1
-      ).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+      const yyyymmdd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
 
       if (sinceFilter && yyyymmdd < sinceFilter) return false;
       if (untilFilter && yyyymmdd > untilFilter) return false;
@@ -71,7 +61,7 @@ const App = () => {
     <>
       <div
         className="w-full h-full bg-white opacity-87  p-0 overflow-hidden  "
-        style={{ WebkitAppRegion: "drag" }}
+        style={{ WebkitAppRegion: 'drag' }}
       >
         {/* 최상단 손잡이, 닫기 버튼 */}
         <div className="pt-[1.6rem] pb-[2.1rem] flex justify-center relative">
@@ -82,7 +72,7 @@ const App = () => {
             <img
               src={closeUrl}
               alt="닫기 버튼 "
-              style={{ WebkitAppRegion: "no-drag" }}
+              style={{ WebkitAppRegion: 'no-drag' }}
               onClick={() => closeWindow()}
             />
           </div>
