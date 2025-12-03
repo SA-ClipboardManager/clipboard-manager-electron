@@ -8,7 +8,7 @@ import useDisableDuringSubmit from '../../utils/useDisableDuringSubmit';
 import LoginModal from '../Login/LoginModal';
 import { searchKeyword } from '../../utils/electronService';
 
-const SearchBar = ({ setItemsFromSearchResult, refetch, loginInfo, setLoginInfo }) => {
+const SearchBar = ({ setItemsFromSearchResult, refetch, loginInfo, setLoginInfo, locationFilter}) => {
   const options = ['일반 검색', '고급 검색'];
 
   const searchOptions = [
@@ -26,7 +26,16 @@ const SearchBar = ({ setItemsFromSearchResult, refetch, loginInfo, setLoginInfo 
   useDisableDuringSubmit(modalState === 'login', dropdownBtnRef);
 
   const handleSearch = async () => {
-    const model = currentSelection === '일반 검색' ? 'mobilenet' : 'clip';
+    // const model = currentSelection === '일반 검색' ? 'mobilenet' : 'clip';
+    let model = "";
+    if (currentSelection === "일반 검색") {
+    if (locationFilter === "All")       model = "both_mobilenet";
+    else if (locationFilter === "Local") model = "local_mobilenet";
+    else if (locationFilter === "Cloud") model = "cloud_mobilenet";
+  } else {
+    model = "clip";
+  }
+
     const result = await searchKeyword(keyword, model);
     console.log('this is Search model: ', model);
     if (result.success) {

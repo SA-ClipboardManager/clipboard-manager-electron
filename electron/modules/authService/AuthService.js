@@ -3,6 +3,7 @@ const { IAuthService } = require("../../shared/interfaces/IAuthService");
 const CCDError = require("../../shared/errors/CCDError");
 const { tokenStorageInstance } = require("./token-storage/TokenStorage");
 const EventEmitter = require("events");
+const CorrelationId = require("../../shared/utility/CorrelationId");
 const DEFAULT_API_BASE_URL = process.env.CLOUD_API_BASE_URL;
 
 /**
@@ -45,18 +46,44 @@ class AuthService extends EventEmitter {
    * @inheritdoc
    */
   async login(userId, password) {
+    const correlationId = CorrelationId.generate();
     try {
-      const url = "/auth/v1/api/v1/auth/login";
+      const url = "/api/v1/auth/login";
 
-      const response = await this.httpClient.post(url, {
-        user_id: userId,
-        password,
-      });
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Login attempt for user: ${userId}`
+        )
+      );
+
+      const response = await this.httpClient.post(
+        url,
+        {
+          user_id: userId,
+          password,
+        },
+        {
+          headers: {
+            [CorrelationId.HEADER_NAME]: correlationId,
+          },
+        }
+      );
       const tokens = this._transformTokens(response.data);
       await this.tokenStorage.save(tokens);
+
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Login successful for user: ${userId}`
+        )
+      );
       this.emit("login-success", userId);
       return tokens;
     } catch (error) {
+      console.error(
+        CorrelationId.formatLog(correlationId, `Login failed: ${error.message}`)
+      );
       throw CCDError.create("E501", {
         module: "AuthService",
         context: "로그인 요청 실패",
@@ -67,23 +94,103 @@ class AuthService extends EventEmitter {
   }
 
   /**
+   * @param {string} userId
+   * @param {string} password
+   * @returns {Promise<{joinResultMsg: string}>}
+   */
+  async register(userId, password) {
+    const correlationId = CorrelationId.generate();
+    try {
+      const url = "/api/v1/auth/register";
+
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Register attempt for user: ${userId}`
+        )
+      );
+
+      const response = await this.httpClient.post(
+        url,
+        {
+          user_id: userId,
+          password,
+        },
+        {
+          headers: {
+            [CorrelationId.HEADER_NAME]: correlationId,
+          },
+        }
+      );
+
+      if (response.data && response.data.message) {
+        console.log(
+          CorrelationId.formatLog(
+            correlationId,
+            `Registration successful for user: ${userId}`
+          )
+        );
+        return { joinResultMsg: response.data.message };
+      }
+
+      return { joinResultMsg: "success" };
+    } catch (error) {
+      console.error(
+        CorrelationId.formatLog(
+          correlationId,
+          `Registration failed: ${error.message}`
+        )
+      );
+      if (error.response && error.response.status === 409) {
+        return { joinResultMsg: "duplication" };
+      }
+      throw CCDError.create("E503", {
+        module: "AuthService",
+        context: "회원가입 요청 실패",
+        message: error.response?.data?.detail || error.message,
+        cause: error,
+      });
+    }
+  }
+
+  /**
    * @inheritdoc
    */
   async logout() {
+    const correlationId = CorrelationId.generate();
     const refreshToken = this.tokenStorage.getRefreshToken();
     try {
       if (refreshToken) {
-        await this.httpClient.post("/auth/logout", {
-          refresh_token: refreshToken,
-        });
+        console.log(CorrelationId.formatLog(correlationId, "Logout request"));
+        await this.httpClient.post(
+          "/api/v1/auth/logout",
+          {
+            refresh_token: refreshToken,
+          },
+          {
+            headers: {
+              [CorrelationId.HEADER_NAME]: correlationId,
+            },
+          }
+        );
+        console.log(
+          CorrelationId.formatLog(correlationId, "Logout successful")
+        );
       }
     } catch (error) {
       console.warn(
-        "[AuthService] Remote logout failed:",
-        error.response?.data?.detail || error.message
+        CorrelationId.formatLog(
+          correlationId,
+          `Remote logout failed: ${
+            error.response?.data?.detail || error.message
+          }`
+        )
       );
     } finally {
+      // 토큰 삭제
       await this.tokenStorage.clear();
+
+      // 클라우드 데이터 삭제 이벤트 발생 (AuthModule에서 처리)
       this.emit("logout-success");
     }
     return true;
@@ -100,9 +207,19 @@ class AuthService extends EventEmitter {
   }
 
   /**
+   * 액세스 토큰만 반환
+   * @returns {string|null}
+   */
+  getAccessToken() {
+    const tokens = this.getAuthToken();
+    return tokens ? tokens.accessToken : null;
+  }
+
+  /**
    * @inheritdoc
    */
   async refreshAccessToken() {
+    const correlationId = CorrelationId.generate();
     const refreshToken = this.tokenStorage.getRefreshToken();
     if (!refreshToken) {
       throw CCDError.create("E502", {
@@ -113,15 +230,37 @@ class AuthService extends EventEmitter {
     }
 
     try {
-      const url = "/auth/v1/api/v1/auth/refresh";
+      const url = "/api/v1/auth/refresh";
 
-      const response = await this.httpClient.post(url, {
-        refresh_token: refreshToken,
-      });
+      console.log(
+        CorrelationId.formatLog(correlationId, "Refreshing access token")
+      );
+
+      const response = await this.httpClient.post(
+        url,
+        {
+          refresh_token: refreshToken,
+        },
+        {
+          headers: {
+            [CorrelationId.HEADER_NAME]: correlationId,
+          },
+        }
+      );
       const tokens = this._transformTokens(response.data);
       await this.tokenStorage.save(tokens);
+
+      console.log(
+        CorrelationId.formatLog(correlationId, "Token refresh successful")
+      );
       return tokens;
     } catch (error) {
+      console.error(
+        CorrelationId.formatLog(
+          correlationId,
+          `Token refresh failed: ${error.message}`
+        )
+      );
       await this.tokenStorage.clear();
       throw CCDError.create("E502", {
         module: "AuthService",

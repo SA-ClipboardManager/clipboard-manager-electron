@@ -61,3 +61,50 @@ export const onCloudUploadStatusChange = (handler) => {
 export const searchKeyword = async (keyword, model) => {
   return window.electronAPI?.searchKeyword?.(keyword, model);
 };
+
+// 초기 동기화 완료 이벤트
+export const onInitialSyncComplete = (handler) => {
+  window.electronAPI?.onInitialSyncComplete?.(handler);
+};
+export const offInitialSyncComplete = (handler) => {
+  window.electronAPI?.offInitialSyncComplete?.(handler);
+};
+
+// 실시간 동기화 알림 이벤트 (다른 디바이스에서 변경)
+export const onSyncNotification = (handler) => {
+  window.electronAPI?.onSyncNotification?.(handler);
+};
+export const offSyncNotification = (handler) => {
+  window.electronAPI?.offSyncNotification?.(handler);
+};
+
+// 클라우드 데이터 삭제 알림 이벤트 (로그아웃 시)
+export const onCloudDataCleared = (handler) => {
+  window.electronAPI?.onCloudDataCleared?.(handler);
+};
+export const offCloudDataCleared = (handler) => {
+  window.electronAPI?.offCloudDataCleared?.(handler);
+};
+
+// 업로드 성공/실패 이벤트
+export const onUploadSuccess = (handler) => {
+  window.electronAPI?.onUploadSuccess?.(handler);
+};
+export const offUploadSuccess = (handler) => {
+  window.electronAPI?.offUploadSuccess?.(handler);
+};
+
+export const onUploadFailed = (handler) => {
+  window.electronAPI?.onUploadFailed?.(handler);
+};
+export const offUploadFailed = (handler) => {
+  window.electronAPI?.offUploadFailed?.(handler);
+};
+
+// 아이템 업데이트 이벤트
+export const onItemUpdated = (handler) => {
+  window.electronAPI?.onItemUpdated?.(handler);
+};
+export const offItemUpdated = (handler) => {
+  window.electronAPI?.offItemUpdated?.(handler);
+};

@@ -1,41 +1,64 @@
 /**
- * 클립보드 데이터 관리 전용 인터페이스
+ * Clipboard Data Management Interface
  * @interface
  */
 class IClipboardRepository {
   /**
-   * 클립보드 항목 저장
-   * @param {object} item
-   * @param {object} meta
+   * Get clipboard item by ID
+   * @param {string} id - The ID of the clipboard item to retrieve
+   * @returns {object|null} The clipboard item or null if not found
+   */
+  getById(id) {
+    throw new Error("Not Implemented");
+  }
+
+  /**
+   * Get all clipboard items
+   * @param {object} [options] - Optional query parameters
+   * @returns {Array<object>} Array of clipboard items
+   */
+  getAll(options) {
+    throw new Error("Not Implemented");
+  }
+
+  /**
+   * Search clipboard items
+   * @param {string} query - Search query string
+   * @param {object} filters - Additional filters for the search
+   * @returns {Array<object>} Array of matching clipboard items
+   */
+  search(query, filters) {
+    throw new Error("Not Implemented");
+  }
+
+  /**
+   * Save a clipboard item
+   * @param {object} item - The clipboard item to save
+   * @param {object} [meta] - Additional metadata (e.g., for images)
    * @returns {Promise<void>}
    */
-  async save(item, meta) { throw new Error("Not Implemented"); }
+  async save(item, meta) {
+    throw new Error("Not Implemented");
+  }
 
   /**
-   * ID로 항목 조회
-   * @param {string} id
-   * @returns {Promise<object | null>}
+   * Delete a clipboard item
+   * @param {string} id - The ID of the item to delete
+   * @returns {Promise<void>}
    */
-  async getById(id) { throw new Error("Not Implemented"); }
+  async delete(id) {
+    throw new Error("Not Implemented");
+  }
 
   /**
-   * 모든 항목 조회 (UI 표시용)
-   * @returns {Promise<Array<object>>}
+   * Attach tags to a clipboard item
+   * @param {string} dataId - The ID of the clipboard item
+   * @param {Array<string>} tagNames - Array of tag names to attach
+   * @returns {Promise<void>}
    */
-  async getAll() { throw new Error("Not Implemented"); }
-
-  /**
-   * 검색
-   * @param {string} query
-   * @param {object} options
-   */
-  async search(query, options) { throw new Error("Not Implemented"); }
-  
-  /**
-   * 항목 삭제
-   * @param {string} id
-   */
-  async delete(id) { throw new Error("Not Implemented"); }
+  async attachTags(dataId, tagNames) {
+    throw new Error("Not Implemented");
+  }
 }
 
 module.exports = IClipboardRepository;

@@ -1,15 +1,22 @@
 const DatabaseContext = require("../../infrastructure/database/DatabaseContext");
 const ClipboardRepository = require("../../infrastructure/repositories/ClipboardRepository");
-const SyncRepository = require("../../infrastructure/repositories/SyncRepository");
+const OutboxRepository = require("../../infrastructure/repositories/OutboxRepository");
 const {
   TokenStorage,
 } = require("../../modules/authService/token-storage/TokenStorage");
 const { AuthService } = require("../../modules/authService/AuthService");
-const { CloudService } = require("../../modules/cloud/CloudService");
 const {
   ClipboardService,
 } = require("../../modules/clipboard/ClipboardService");
-const EtcService = require("../../modules/etc/EtcService");
+const CloudService = require("../../modules/cloud/CloudService");
+const WebSocketManager = require("../../modules/cloud/WebSocketManager");
+const SyncCoordinator = require("../../modules/cloud/SyncCoordinator");
+const {
+  createAuthenticatedHttpClient,
+} = require("../../shared/utility/HttpClient");
+// const SearchService = require("../../modules/search/SearchService");
+const NotifyService = require("../../modules/notify/notifyService");
+const SearchService = require("../../modules/search/SearchService");
 require("dotenv").config();
 
 class serviceConfig {
@@ -19,68 +26,84 @@ class serviceConfig {
     this.services = {};
   }
 
-  /**
-   * DB 초기화
-   */
   initializeInfrastructure() {
-    // DB Context 초기화 (Singleton)
     const dbContext = new DatabaseContext();
     dbContext.initialize();
-
     this.infrastructure.dbContext = dbContext;
     console.log("[serviceConfig] Infrastructure initialized.");
   }
 
-  /**
-   *리포지토리 초기화 (DB Context 주입)
-   */
   initializeRepositories() {
     const { dbContext } = this.infrastructure;
 
-    // 도메인별 리포지토리 분리 생성
+    this.repositories.outboxRepo = new OutboxRepository(dbContext.getDb());
+
     this.repositories.clipboardRepo = new ClipboardRepository(dbContext);
-    this.repositories.syncRepo = new SyncRepository(dbContext);
 
     console.log("[serviceConfig] Repositories initialized.");
   }
 
-  /**
-   * 서비스 초기화 (리포지토리 및 타 서비스 주입)
-   */
   initializeServices() {
-    const { clipboardRepo, syncRepo } = this.repositories;
+    // 1. 필요한 리포지토리 및 환경변수 준비
+    const { clipboardRepo, outboxRepo } = this.repositories; // outboxRepo 꺼내기
     const apiBaseURL = process.env.CLOUD_API_BASE_URL;
-    console.log("⭐⭐⭐⭐");
-    console.log(apiBaseURL);
 
+    // 2. 기초 서비스 생성
     const tokenStorage = new TokenStorage();
-
     const authService = new AuthService(tokenStorage, { apiBaseURL });
+    const webSocketManager = new WebSocketManager(apiBaseURL);
 
-    const cloudService = new CloudService(syncRepo, {
+    const uploadClient = createAuthenticatedHttpClient(apiBaseURL, {
       tokenStorage,
       authService,
+    });
+
+    // 3. CloudService 생성
+    const cloudService = new CloudService({
+      outboxRepo,
+      clipboardRepo,
+      wsManager: webSocketManager,
+      authService,
+      uploadClient,
       apiBaseURL,
     });
 
-    const clipboardService = new ClipboardService(clipboardRepo);
+    // 4. ClipboardService 먼저 생성 (다른 서비스가 참조할 수 있도록)
+    const clipboardService = new ClipboardService(clipboardRepo, cloudService);
 
-    const etcService = new EtcService(clipboardRepo, clipboardService);
+    // 5. SyncCoordinator 생성 및 시작 (백그라운드 업로더)
+    const syncCoordinator = new SyncCoordinator({
+      outboxRepo,
+      cloudService,
+    });
+    syncCoordinator.start(); // 동기화 루프 시작
 
+    // 6. 부가 서비스 생성 (ClipboardService 의존 가능)
+    const notifyService = new NotifyService(
+      clipboardRepo,
+      clipboardService,
+      cloudService
+    );
+    const searchService = new SearchService(clipboardRepo, uploadClient); // 인증 & 갱신 포함된 axios 주입 (CloudService.uploadClient 재사용)
+
+    // 6. 서비스 등록
     this.services = {
       TokenStorage: tokenStorage,
       AuthService: authService,
-      CloudService: cloudService,
       ClipboardService: clipboardService,
-      EtcService: etcService,
+      CloudService: cloudService,
+      WebSocketManager: webSocketManager,
+      SyncCoordinator: syncCoordinator,
+      NotifyService: notifyService,
+      SearchService: searchService,
+      ClipboardRepository: clipboardRepo, // AuthModule에서 사용
     };
 
-    console.log("[serviceConfig] Services initialized.");
+    console.log(
+      "[serviceConfig] Services initialized & SyncCoordinator started."
+    );
   }
 
-  /**
-   *
-   */
   getServices() {
     return this.services;
   }

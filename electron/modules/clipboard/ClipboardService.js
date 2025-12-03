@@ -5,8 +5,9 @@ class ClipboardService {
   /**
    * @param {import('../../infrastructure/repositories/ClipboardRepository')} repository
    */
-  constructor(repository) {
+  constructor(repository, cloudService) {
     this.repository = repository;
+    this.cloudService = cloudService;
     this.skipCopyContent = new Set();
     this.skipContentType = null;
     this.skipTimestamp = 0;
@@ -53,6 +54,13 @@ class ClipboardService {
    */
   async saveFromListener(payload) {
     try {
+      console.log(`[ClipboardService] saveFromListener payload:`, {
+        id: payload.id,
+        type: payload.type,
+        hasImageMeta: !!payload.imageMeta,
+        imageMeta: payload.imageMeta,
+      });
+
       // 데이터 가공 로직 (기존 index.js의 로직 이동)
       const createdAtSeconds = Math.floor(payload.created_at / 1000);
 
@@ -73,15 +81,18 @@ class ClipboardService {
           width: payload.imageMeta.width,
           height: payload.imageMeta.height,
           file_size: payload.imageMeta.file_size,
-          thumbnail_path: payload.imageMeta.thumbnailPath,
+          thumbnail_path: payload.imageMeta.thumbnail_path,
         };
+        console.log(`[ClipboardService] Image meta prepared:`, meta);
       }
 
       // 리포지토리를 통해 DB 저장
       await this.repository.save(itemToSave, meta);
 
       console.log(
-        `[ClipboardService] Item saved: ${payload.id} (${payload.type})`
+        `[ClipboardService] Item saved: ${payload.id} (${
+          payload.type
+        }), hasMeta: ${!!meta}`
       );
       return itemToSave;
     } catch (error) {

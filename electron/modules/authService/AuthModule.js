@@ -3,12 +3,43 @@ const CCDError = require("../../shared/errors/CCDError");
 
 class AuthModule extends BaseModule {
   constructor(services) {
-  super(services, "auth");
-  this.service = services.AuthService;  // Changed from app.service.AuthService to services.AuthService
-  if (!this.service) {
-    console.error("AuthService not initialized.");
+    super(services, "auth");
+    this.service = services.AuthService;
+    this.clipboardRepository = services.ClipboardRepository;
+
+    if (!this.service) {
+      console.error("AuthService not initialized.");
+    }
+
+    // 로그아웃 시 클라우드 데이터 삭제
+    this.service.on("logout-success", () => {
+      this._cleanupCloudData();
+    });
   }
-}
+
+  /**
+   * 로그아웃 시 클라우드 아이템 삭제
+   * @private
+   */
+  _cleanupCloudData() {
+    try {
+      if (this.clipboardRepository) {
+        const deletedCount = this.clipboardRepository.deleteAllCloudItems();
+        console.log(
+          `[AuthModule] Cleaned up ${deletedCount} cloud items on logout`
+        );
+
+        // 렌더러에 알림을 보내서 UI 갱신
+        const { BrowserWindow } = require("electron");
+        const win = BrowserWindow.getAllWindows()[0];
+        if (win && win.webContents) {
+          win.webContents.send("cloud-data-cleared");
+        }
+      }
+    } catch (error) {
+      console.error("[AuthModule] Failed to cleanup cloud data:", error);
+    }
+  }
 
   registerIpcHandler(ipcMain) {
     ipcMain.handle("user-login", async (_, { userId, password }) => {
@@ -26,11 +57,14 @@ class AuthModule extends BaseModule {
           throw new Error("토큰 발급 실패");
         }
       } catch (err) {
-        const error = CCDError.create(err.code || "E610", {
-          module: "AuthModule",
-          context: "로그인 처리",
-          details: err.message,
-        });
+        const error =
+          err instanceof CCDError
+            ? err
+            : CCDError.create(err.code || "E610", {
+                module: "AuthModule",
+                context: "로그인 처리",
+                details: err.message,
+              });
         console.error(error);
         return error.toJSON();
       }
@@ -43,13 +77,34 @@ class AuthModule extends BaseModule {
 
         return { success: true, message: "로그아웃 완료" };
       } catch (err) {
-        const error = CCDError.create("E610", {
-          module: "AuthModule",
-          context: "로그아웃 처리",
-          details: err.message,
-        });
+        const error =
+          err instanceof CCDError
+            ? err
+            : CCDError.create(err.code || "E610", {
+                module: "AuthModule",
+                context: "로그아웃 처리",
+                details: err.message,
+              });
         console.error(error);
         return error.toJSON();
+      }
+    });
+
+    ipcMain.handle("user-register", async (_, { userId, password }) => {
+      try {
+        const result = await this.service.register(userId, password);
+        return result;
+      } catch (err) {
+        const error =
+          err instanceof CCDError
+            ? err
+            : CCDError.create(err.code || "E611", {
+                module: "AuthModule",
+                context: "회원가입 처리",
+                details: err.message,
+              });
+        console.error(error);
+        return { joinResultMsg: "fail", error: error.toJSON() };
       }
     });
 
@@ -58,11 +113,14 @@ class AuthModule extends BaseModule {
         const loginState = await this.service.getLoginState();
         return { success: true, ...loginState };
       } catch (err) {
-        const error = CCDError.create("E610", {
-          module: "AuthModule",
-          context: "로그인 상태 확인",
-          details: err.message,
-        });
+        const error =
+          err instanceof CCDError
+            ? err
+            : CCDError.create(err.code || "E610", {
+                module: "AuthModule",
+                context: "로그인 상태 확인",
+                details: err.message,
+              });
         console.error(error);
         return error.toJSON();
       }

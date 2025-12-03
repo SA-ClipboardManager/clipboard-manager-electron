@@ -7,8 +7,19 @@ const CCDError = require("../../shared/errors/CCDError");
 
 class DatabaseContext {
   constructor() {
-    this.dbPath = path.join(app.getPath("userData"), "clipboard-manager.db");
+    // 환경변수로 인스턴스 ID 설정 가능 (다중 인스턴스 테스트용)
+    const instanceId = process.env.ELECTRON_INSTANCE_ID || "default";
+    const dbFileName =
+      instanceId === "default"
+        ? "clipboard-manager.db"
+        : `clipboard-manager-${instanceId}.db`;
+
+    this.dbPath = path.join(app.getPath("userData"), dbFileName);
     this.db = null;
+
+    console.log(
+      `[DatabaseContext] Instance: ${instanceId}, DB: ${this.dbPath}`
+    );
   }
 
   /**
@@ -42,10 +53,6 @@ class DatabaseContext {
     }
   }
 
-  /**
-   * 초기화된 DB 인스턴스를 반환합니다.
-   * UoW나 Repository에서 이 메서드를 통해 db 객체를 얻습니다.
-   */
   getDb() {
     if (!this.db) {
       throw new Error("Database not initialized. Call initialize() first.");
@@ -99,6 +106,20 @@ class DatabaseContext {
         UNIQUE (name, source)  
       );
 
+      CREATE TABLE IF NOT EXISTS sync_outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data_id TEXT NOT NULL,
+        event_type TEXT NOT NULL DEFAULT 'UPLOAD',
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER,
+        next_attempt_at INTEGER,
+        metadata TEXT,
+        FOREIGN KEY (data_id) REFERENCES clipboard(id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS data_tag (
         data_id TEXT NOT NULL,
         tag_id TEXT NOT NULL,
@@ -107,15 +128,6 @@ class DatabaseContext {
         CONSTRAINT data_tag_tag_FK_1 FOREIGN KEY (tag_id) REFERENCES tag(local_id) ON DELETE CASCADE ON UPDATE CASCADE
       );
 
-      CREATE TABLE IF NOT EXISTS pending_sync (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        op TEXT NOT NULL,      
-        data_id TEXT,
-        op_args TEXT, 
-        created_at INTEGER NOT NULL,
-        retry_count INTEGER DEFAULT 0,          
-        next_attempt_at INTEGER DEFAULT 0       
-      );
     `);
   }
 
@@ -124,6 +136,9 @@ class DatabaseContext {
       CREATE INDEX IF NOT EXISTS idx_clipboard_created ON clipboard(created_at);
       CREATE INDEX IF NOT EXISTS idx_tag_name ON tag(name);
       CREATE INDEX IF NOT EXISTS idx_data_tag ON data_tag(data_id, tag_id);
+      CREATE INDEX IF NOT EXISTS idx_sync_outbox_status ON sync_outbox(status);
+      CREATE INDEX IF NOT EXISTS idx_sync_outbox_created_at ON sync_outbox(created_at);
+      CREATE INDEX IF NOT EXISTS idx_sync_outbox_next_attempt ON sync_outbox(next_attempt_at);
     `);
   }
 
