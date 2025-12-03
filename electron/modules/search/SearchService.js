@@ -1,4 +1,6 @@
 const CCDError = require("../../shared/errors/CCDError");
+const API_GATEWAY_URL = process.env.CLOUD_API_BASE_URL;
+const CorrelationId = require("../../shared/utility/CorrelationId");
 
 class SearchService {
     /**
@@ -10,14 +12,11 @@ class SearchService {
     constructor(clipboardRepository, axiosInstance) {
         this.clipboardRepository = clipboardRepository;
         this.axios = axiosInstance;
-        this.cache = {
-            all: {data: null, valid: false},
-        };
     }
 
-    async keywordLocalSearch(query, {isCloud} = {}) {
+    async keywordLocalSearch(keyword, {isCloud} = {}) {
         try {
-            const dbResults = await this.clipboardRepository.search(query, {isCloud});
+            const dbResults = await this.clipboardRepository.search(keyword, {isCloud});
             console.log(dbResults.map(item => item.id));
             return dbResults;
         } catch (error) {
@@ -29,11 +28,10 @@ class SearchService {
         }
     }
 
-    async keywordCloudSearch(query, {isCloud} = {}) {
+    async keywordCloudSearch(keyword, {isCloud} = {}) {
         try {
-            const dbResults = await this.clipboardRepository.search(query, {isCloud});
+            const dbResults = await this.clipboardRepository.search(keyword, {isCloud});
             console.log(dbResults.map(item => item.id));
-            console.log(this.cache.all.data);
 
             return dbResults;
         } catch (error) {
@@ -45,9 +43,9 @@ class SearchService {
         }
     }
 
-    async keywordLocalCloudSearch(query,  {isCloud} = {}) {
+    async keywordLocalCloudSearch(keyword, {isCloud} = {}) {
         try {
-            const dbResults = await this.clipboardRepository.search(query, {isCloud});
+            const dbResults = await this.clipboardRepository.search(keyword, {isCloud});
             console.log(dbResults.map(item => item.id));
 
             return dbResults;
@@ -60,36 +58,48 @@ class SearchService {
         }
     }
 
-    /*
-     {
-      id: string,
-      type: "txt" | "img",
-      content: string, // txt: string, img: 이미지 URL
-      format?: string,
-      created_at: number,
-      tags: string[],
-      imageMeta?: {
-      width,
-      height,
-      file_size,
-      originalUrl,
-      thumbnailUrl
-    }
-     */
 
-//TODO api 호출 방법에 따라 수정
-    async vectorCloudSearch(query) {
+    async vectorCloudSearch(keyword) {
         try {
-            const response = await this.axios.post("/api/search/clip", {query});
 
-            const items = response.data.items || [];
 
-            return items.map(item => ({
-                ...item,
-                shared: "cloud",
-            }));
+            const correlationId = CorrelationId.generate();
+            console.log(`[${correlationId}] 🚀 Sending Keyword:`, keyword);
+            const response = await this.axios.post(
+                `/api/search/clip`,
+                {keyword: keyword},
+                {headers: {[CorrelationId.HEADER_NAME]: correlationId}},
+            );
+
+            console.log(`[${correlationId}] ✅ Server Response:`, response.data);
+
+            const items = response.data || [];    //id 리스트 반환 ["id1", "id2"]
+
+            console.log(
+                CorrelationId.formatLog(
+                    correlationId,
+                    `Search successful. Found ${Array.isArray(items) ? items.length : 0} items.`
+                )
+            );
+
+            if (items.length > 0) {
+                const dbResults = await this.clipboardRepository.getByIds(items);
+                return dbResults;
+            }
+            return [];
 
         } catch (error) {
+            if (error.response) {
+                // 서버가 응답은 줬는데 4xx, 5xx 에러인 경우
+                console.error(`[Search Fail] Status: ${error.response.status}`);
+                console.error(`[Search Fail] Data:`, error.response.data);
+            } else if (error.request) {
+                // 요청은 갔는데 응답을 못 받은 경우 (네트워크 문제 등)
+                console.error(`[Search Fail] No Response received`);
+            } else {
+                // 코드 설정 문제
+                console.error(`[Search Fail] Config Error:`, error.message);
+            }
             throw CCDError.create("E610", {
                 module: "SearchService",
                 context: "CLIP 검색 실패",
