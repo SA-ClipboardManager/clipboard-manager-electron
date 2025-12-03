@@ -110,6 +110,22 @@ class CloudModule extends BaseModule {
       this._sendToRenderer("item-updated", transformedItem);
     });
 
+    // 태깅 결과 수신 시 로컬 DB에 태그 저장
+    try {
+      const TaggingSync = require("./TaggingSync");
+      const taggingSync = new TaggingSync();
+      wsManager.on("tagging-result", async ({ dataId, tags }) => {
+        try {
+          await taggingSync.handleTaggingResult({ dataId, tags });
+          this._sendToRenderer("tagging-result", { dataId, tags });
+        } catch (e) {
+          console.error("[CloudModule] Failed to persist tagging-result:", e);
+        }
+      });
+    } catch (e) {
+      console.error("[CloudModule] TaggingSync setup failed:", e);
+    }
+
     // Forward connection state changes
     wsManager.on("connected", () => {
       this._sendToRenderer("ws-connected");
