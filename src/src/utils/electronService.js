@@ -108,3 +108,11 @@ export const onItemUpdated = (handler) => {
 export const offItemUpdated = (handler) => {
   window.electronAPI?.offItemUpdated?.(handler);
 };
+
+// 태깅 결과 이벤트
+export const onTaggingResult = (handler) => {
+  window.electronAPI?.onTaggingResult?.(handler);
+};
+export const offTaggingResult = (handler) => {
+  window.electronAPI?.offTaggingResult?.(handler);
+};

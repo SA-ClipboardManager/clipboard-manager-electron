@@ -95,4 +95,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("item-updated", (_, data) => callback(data)),
   offItemUpdated: (callback) =>
     ipcRenderer.removeListener("item-updated", callback),
+
+  // 태깅 결과 알림
+  onTaggingResult: (callback) =>
+    ipcRenderer.on("tagging-result", (_, data) => callback(data)),
+  offTaggingResult: (callback) =>
+    ipcRenderer.removeListener("tagging-result", callback),
 });
