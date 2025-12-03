@@ -6,8 +6,6 @@ import cloudUrl from "../../../assets/cloud.svg";
 import localUrl from "../../../assets/folder.svg";
 
 import {
-  saveDroppedWebImage,
-  saveDroppedWebText,
   pasteItem,
   deleteItem,
 } from "../../utils/electronService";
@@ -42,42 +40,6 @@ const MainView = ({
   const toggleModal = (id) => {
     setActiveItemId((prev) => (prev === id ? null : id));
   };
-
-  useEffect(() => {
-    const handleDrop = async (e) => {
-      e.preventDefault();
-
-      // 1. 웹 이미지 URL 먼저 처리
-      const uri = e.dataTransfer.getData("text/uri-list");
-      const isImageUrl = uri && uri.match(/\.(jpe?g|png|gif|bmp|webp|svg)$/i);
-      if (isImageUrl) {
-        const result = await saveDroppedWebImage({ url: uri });
-        if (result.success && result.item) addItem(result.item);
-        return;
-      }
-
-      // 2. 그 외 웹 텍스트 처리
-      const plainText = e.dataTransfer.getData("text/plain");
-      if (plainText && plainText.trim().length > 0) {
-        const result = await saveDroppedWebText({ content: plainText });
-        if (result.success && result.item) addItem(result.item);
-        return;
-      }
-
-      console.warn("드롭된 데이터가 유효하지 않음");
-    };
-
-    const handleDragOver = (e) => e.preventDefault();
-
-    // dragNdrop 관련 코드 제거
-    window.addEventListener("drop", handleDrop);
-    window.addEventListener("dragover", handleDragOver);
-
-    return () => {
-      window.removeEventListener("drop", handleDrop);
-      window.removeEventListener("dragover", handleDragOver);
-    };
-  }, [addItem]);
 
   const handlePaste = async (id) => {
     try {
