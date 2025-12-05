@@ -1,6 +1,7 @@
 const EventEmitter = require("events");
 const WebSocket = require("ws");
-const CorrelationId = require("../../shared/utility/CorrelationId");
+const CorrelationId = require("../../shared/utility/correlationId");
+const { correlationIdManager } = CorrelationId;
 
 class WebSocketManager extends EventEmitter {
   constructor(apiBaseURL) {
@@ -91,21 +92,16 @@ class WebSocketManager extends EventEmitter {
   /**
    * 메시지 전송
    * @param {Object} message
-   * @param {string} [correlationId] - 선택적 correlation ID (없으면 자동 생성)
+   * @param {string} [correlationId] - 선택적 correlation ID
    */
   send(message, correlationId) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      const cid = correlationId || CorrelationId.generate();
-      const messageWithCid = {
+      const cId = correlationIdManager.getOrCreate(correlationId);
+      const payload = {
         ...message,
-        [CorrelationId.WS_FIELD_NAME]: cid,
+        correlationId: cId,
       };
-
-      console.log(
-        CorrelationId.formatLog(cid, `Sending WS message: ${message.type}`)
-      );
-
-      this.ws.send(JSON.stringify(messageWithCid));
+      this.ws.send(JSON.stringify(payload));
     } else {
       console.warn("[WebSocketManager] WebSocket not open");
     }
@@ -162,7 +158,11 @@ class WebSocketManager extends EventEmitter {
    * 메시지 처리 (private)
    */
   _handleMessage(message) {
-    const correlationId = message[CorrelationId.WS_FIELD_NAME];
+    const correlationId = message.correlationId || null;
+    console.log(
+      `[WebSocketManager] Received (correlationId: ${correlationId}):`,
+      message
+    );
 
     // 서버는 'event' 필드를 사용하지만, 클라이언트는 'type'을 기대
     // event -> type으로 매핑
@@ -204,7 +204,7 @@ class WebSocketManager extends EventEmitter {
         this.emit("tagging-result", {
           dataId: message.data_id || message.dataId,
           userId: message.user_id || message.userId,
-          tags: message.tags || []
+          tags: message.tags || [],
         });
         break;
 
