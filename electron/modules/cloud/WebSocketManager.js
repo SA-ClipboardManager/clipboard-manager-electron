@@ -44,6 +44,9 @@ class WebSocketManager extends EventEmitter {
     });
 
     this.ws.on("message", (data) => {
+      console.log(
+        `[WebSocketManager] RAW MESSAGE RECEIVED: ${data.toString()}`
+      );
       try {
         const message = JSON.parse(data.toString());
         this._handleMessage(message);
@@ -180,6 +183,12 @@ class WebSocketManager extends EventEmitter {
         // Heartbeat 응답
         break;
 
+      // 새로운 이벤트 형식 (점 구분자)
+      case "crud.item.saved.txt":
+      case "crud.item.saved.img":
+      case "crud.item.deleted":
+      case "crud.item.tags.synced":
+      // 기존 이벤트 형식 (하위 호환성)
       case "crud:txtSave_success":
       case "crud:imgSave_success":
       case "clip_created":
