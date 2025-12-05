@@ -9,10 +9,28 @@ class TaggingSync {
   }
 
   handleTaggingResult({ dataId, tags }) {
-    if (!dataId || !Array.isArray(tags)) return;
+    if (!dataId || !Array.isArray(tags)) {
+      console.warn('[TaggingSync] Invalid data:', { dataId, tags });
+      return;
+    }
+    
     try {
-      this.tagRepository.saveTaggingResult(String(dataId), tags);
-      console.log(`[TaggingSync] Saved ${tags.length} tags for ${dataId}`);
+      // tags는 [{label, score}, ...] 형식
+      const tagNames = tags.map(t => {
+        if (t && typeof t === 'object' && t.label) {
+          return t.label;
+        }
+        if (typeof t === 'string') {
+          return t;
+        }
+        if (Array.isArray(t) && t[0]) {
+          return t[0];
+        }
+        return null;
+      }).filter(Boolean);
+      
+      this.tagRepository.saveTaggingResult(String(dataId), tagNames);
+      console.log(`[TaggingSync] Saved ${tagNames.length} tags for ${dataId}:`, tagNames);
     } catch (err) {
       console.error('[TaggingSync] Failed to save tags:', err);
     }
