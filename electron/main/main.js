@@ -65,7 +65,16 @@ async function registerCcdProtocol() {
       try {
         stat = await fs.promises.stat(finalPath);
       } catch (e) {
-        throw new Error("File not found: " + relPath);
+        console.error(`[ccd protocol] File not found:`, {
+          relPath,
+          finalPath,
+          FILE_ROOT,
+          IMAGES_ROOT,
+          error: e.message,
+        });
+        throw new Error(
+          `File not found: ${relPath} (resolved to: ${finalPath})`
+        );
       }
       if (stat.isDirectory()) {
         console.error(

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { useState, useEffect, useCallback } from "react";
+import { v4 as uuidv4 } from "uuid";
 import {
   loadClipboardRecords,
   onClipboardUpdated,
@@ -19,7 +19,7 @@ import {
   onTaggingResult,
   offTaggingResult,
   deleteItem,
-} from './electronService';
+} from "./electronService";
 
 const useClipboardRecords = () => {
   const [items, setItems] = useState([]);
@@ -30,22 +30,28 @@ const useClipboardRecords = () => {
       ...item,
       selected: false,
       itemId: item.itemId ?? item.id ?? uuidv4(),
-      type: item.type === 'txt' ? 'text' : item.type === 'img' ? 'image' : item.type,
+      type:
+        item.type === "txt"
+          ? "text"
+          : item.type === "img"
+          ? "image"
+          : item.type,
       timestamp: item.created_at ?? item.createdAt ?? Date.now(),
-      fileName: item.fileName ?? 'unnamed',
-      ext: item.format?.split('/')?.[1] ?? 'unknown',
-      shared: item.shared ?? (item.isSynced ? 'both' : 'local'),
+      fileName: item.fileName ?? "unnamed",
+      ext: item.format?.split("/")?.[1] ?? "unknown",
+      // isSynced 값에 따라 shared 설정
+      shared: item.isSynced === true ? "both" : item.shared ?? "local",
       tags: item.tags ?? [],
     };
 
     // 이미지인 경우 src와 thumbnail_path 설정
-    if (item.type === 'img') {
+    if (item.type === "img") {
       // 썸네일 경로 우선, 없으면 content 사용
       formatted.src = item.meta?.thumbnail_path || item.content;
       formatted.thumbnail_path = item.meta?.thumbnail_path;
       formatted.file_path = item.meta?.file_path;
       formatted.content = item.content;
-    } else if (item.type === 'txt') {
+    } else if (item.type === "txt") {
       formatted.content = item.content;
     }
 
@@ -60,10 +66,10 @@ const useClipboardRecords = () => {
         const formatted = response.data.map(formatItem);
         setItems(formatted);
       } else {
-        console.error('불러오기 실패:', response);
+        console.error("불러오기 실패:", response);
       }
     } catch (err) {
-      console.error('에러:', err);
+      console.error("에러:", err);
     }
   }, []);
 
@@ -75,13 +81,17 @@ const useClipboardRecords = () => {
   useEffect(() => {
     const handler = (incomingItems) => {
       // incomingItems가 없거나 비어있으면 안전하게 전체 재조회
-      if (!incomingItems || !Array.isArray(incomingItems) || incomingItems.length === 0) {
-        console.log('clipboard-updated: 빈 payload 수신, 전체 재조회 실행');
+      if (
+        !incomingItems ||
+        !Array.isArray(incomingItems) ||
+        incomingItems.length === 0
+      ) {
+        console.log("clipboard-updated: 빈 payload 수신, 전체 재조회 실행");
         refetch();
         return;
       }
 
-      console.log('clipboard-updated 수신 → 증분 병합', incomingItems);
+      console.log("clipboard-updated 수신 → 증분 병합", incomingItems);
       const formattedNew = incomingItems.map(formatItem);
 
       setItems((prev) => {
@@ -102,7 +112,7 @@ const useClipboardRecords = () => {
   // 초기 동기화 완료 시 UI 갱신 (전체 재조회)
   useEffect(() => {
     const handler = (info) => {
-      console.log('[initial-sync-complete]', info);
+      console.log("[initial-sync-complete]", info);
       // 서버 데이터가 로컬 DB에 반영되었으므로 화면 갱신
       refetch();
     };
@@ -112,10 +122,28 @@ const useClipboardRecords = () => {
 
   // 실시간 동기화 알림 처리 (다른 디바이스에서 변경)
   useEffect(() => {
-    const handler = (data) => {
-      console.log('[sync-notification] Other device changed:', data);
-      // 서버에서 새 데이터가 들어왔으므로 전체 재조회
-      refetch();
+    const handler = (newItem) => {
+      console.log("[sync-notification] Other device changed:", newItem);
+      if (!newItem || !newItem.id) {
+        console.log("[sync-notification] Invalid payload, refetching all.");
+        refetch();
+        return;
+      }
+      const formattedItem = formatItem(newItem);
+      setItems((prev) => {
+        const exists = prev.some(
+          (item) => item.itemId === formattedItem.itemId
+        );
+        if (exists) {
+          // Item already exists, maybe update it
+          return prev.map((item) =>
+            item.itemId === formattedItem.itemId ? formattedItem : item
+          );
+        } else {
+          // Add the new item to the top
+          return [formattedItem, ...prev];
+        }
+      });
     };
     onSyncNotification?.(handler);
     return () => offSyncNotification?.(handler);
@@ -124,7 +152,7 @@ const useClipboardRecords = () => {
   // 로그아웃 시 클라우드 데이터 삭제 알림 처리
   useEffect(() => {
     const handler = () => {
-      console.log('[cloud-data-cleared] Refreshing UI after logout cleanup');
+      console.log("[cloud-data-cleared] Refreshing UI after logout cleanup");
       refetch();
     };
     onCloudDataCleared?.(handler);
@@ -136,7 +164,7 @@ const useClipboardRecords = () => {
   // 업로드 성공 이벤트 처리
   useEffect(() => {
     const handleUploadSuccess = (data) => {
-      console.log('[Upload Success] Received:', {
+      console.log("[Upload Success] Received:", {
         itemId: data.itemId,
         hasItem: !!data.item,
         item: data.item,
@@ -145,16 +173,17 @@ const useClipboardRecords = () => {
       // data.item에 업데이트된 전체 정보가 있으면 병합
       if (data.item) {
         const updatedItem = formatItem(data.item);
-        console.log('[Upload Success] Formatted item:', updatedItem);
+        console.log("[Upload Success] Formatted item:", updatedItem);
 
         setItems((prev) => {
           const updated = prev.map((item) => {
             if (item.itemId === data.itemId || item.id === data.itemId) {
-              console.log('[Upload Success] Updating item:', {
+              console.log("[Upload Success] Updating item:", {
                 before: item,
-                after: { ...item, ...updatedItem, shared: 'both' },
+                after: { ...item, ...updatedItem },
               });
-              return { ...item, ...updatedItem, shared: 'both' };
+              // formatItem에서 이미 isSynced를 기반으로 shared가 설정됨
+              return { ...item, ...updatedItem };
             }
             return item;
           });
@@ -162,19 +191,25 @@ const useClipboardRecords = () => {
         });
       } else {
         // item 정보가 없으면 shared만 업데이트 (fallback)
-        setItems((prev) => prev.map((item) => (item.itemId === data.itemId || item.id === data.itemId ? { ...item, shared: 'both' } : item)));
+        setItems((prev) =>
+          prev.map((item) =>
+            item.itemId === data.itemId || item.id === data.itemId
+              ? { ...item, shared: "both" }
+              : item
+          )
+        );
       }
     };
 
     const handleItemUpdated = (updatedItem) => {
-      console.log('[Item Updated] Received:', updatedItem);
+      console.log("[Item Updated] Received:", updatedItem);
       const formatted = formatItem(updatedItem);
-      console.log('[Item Updated] Formatted:', formatted);
+      console.log("[Item Updated] Formatted:", formatted);
 
       setItems((prev) => {
         const updated = prev.map((item) => {
           if (item.itemId === updatedItem.id || item.id === updatedItem.id) {
-            console.log('[Item Updated] Updating item:', {
+            console.log("[Item Updated] Updating item:", {
               before: item,
               after: { ...item, ...formatted },
             });
@@ -187,7 +222,7 @@ const useClipboardRecords = () => {
     };
 
     const handleUploadFailed = (data) => {
-      console.warn('[Upload Failed]', data.itemId, data.error);
+      console.warn("[Upload Failed]", data.itemId, data.error);
       // UI에 실패 표시를 원하면 여기서 처리
     };
 
@@ -205,9 +240,15 @@ const useClipboardRecords = () => {
   // 태깅 결과 이벤트 처리
   useEffect(() => {
     const handleTaggingResult = ({ dataId, tags }) => {
-      console.log('[Tagging Result] Tags synced for:', dataId, tags);
+      console.log("[Tagging Result] Tags synced for:", dataId, tags);
       // 해당 아이템의 태그만 부분 업데이트
-      setItems((prev) => prev.map((item) => (item.itemId === dataId || item.id === dataId ? { ...item, tags: tags || [] } : item)));
+      setItems((prev) =>
+        prev.map((item) =>
+          item.itemId === dataId || item.id === dataId
+            ? { ...item, tags: tags || [] }
+            : item
+        )
+      );
     };
 
     onTaggingResult?.(handleTaggingResult);
@@ -215,24 +256,30 @@ const useClipboardRecords = () => {
   }, []);
 
   useEffect(() => {
-    console.log('현재 items 상태:', items);
+    console.log("현재 items 상태:", items);
   }, [items]);
 
   const toggleSelect = (itemId) => {
-    console.log('현재 선택된 item: ', itemId);
-    setItems((prev) => prev.map((item) => (item.itemId === itemId ? { ...item, selected: !item.selected } : item)));
+    console.log("현재 선택된 item: ", itemId);
+    setItems((prev) =>
+      prev.map((item) =>
+        item.itemId === itemId ? { ...item, selected: !item.selected } : item
+      )
+    );
   };
 
   //  드래그앤드랍으로 받은 아이템 추가
   const addItem = (newItem) => {
-    console.log('newitem: ', newItem);
+    console.log("newitem: ", newItem);
     const itemId = newItem.itemId ?? uuidv4();
 
     setItems((prev) => {
       const isDuplicate = prev.some(
         (item) =>
           item.itemId === newItem.itemId || // 이미 UUID가 같은 항목이 있다면 중복
-          (item.type === newItem.type && item.content === newItem.content && item.timestamp === newItem.timestamp)
+          (item.type === newItem.type &&
+            item.content === newItem.content &&
+            item.timestamp === newItem.timestamp)
       );
       if (isDuplicate) return prev;
 
@@ -242,9 +289,9 @@ const useClipboardRecords = () => {
           selected: false,
           itemId,
           timestamp: newItem.timestamp ?? Date.now(),
-          fileName: newItem.fileName ?? 'unnamed',
-          ext: newItem.ext ?? 'unknown',
-          path: newItem.path ?? '',
+          fileName: newItem.fileName ?? "unnamed",
+          ext: newItem.ext ?? "unknown",
+          path: newItem.path ?? "",
         },
         ...prev,
       ];
@@ -255,13 +302,18 @@ const useClipboardRecords = () => {
       ...item,
       selected: false,
       itemId: item.itemId ?? item.id ?? uuidv4(),
-      type: item.type === 'txt' ? 'text' : item.type === 'img' ? 'image' : item.type,
-      src: item.type === 'img' ? item.content : undefined,
-      content: item.type === 'txt' ? item.content : undefined,
+      type:
+        item.type === "txt"
+          ? "text"
+          : item.type === "img"
+          ? "image"
+          : item.type,
+      src: item.type === "img" ? item.content : undefined,
+      content: item.type === "txt" ? item.content : undefined,
       timestamp: item.created_at ?? Date.now(),
-      fileName: item.fileName ?? 'unnamed',
-      ext: item.format?.split('/')?.[1] ?? 'unknown',
-      shared: item.shared ?? 'local',
+      fileName: item.fileName ?? "unnamed",
+      ext: item.format?.split("/")?.[1] ?? "unknown",
+      shared: item.shared ?? "local",
       tags: item.tags ?? [],
     }));
     setItems(formatted);
