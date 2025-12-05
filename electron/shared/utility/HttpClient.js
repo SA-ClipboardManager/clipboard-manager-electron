@@ -1,6 +1,7 @@
 const axios = require("axios");
 const CCDError = require("../errors/CCDError");
-const { correlationIdManager } = require("./correlationId");
+const CorrelationId = require("./correlationId");
+const { correlationIdManager } = CorrelationId;
 
 const createHttpClient = (baseURL) => {
   return axios.create({

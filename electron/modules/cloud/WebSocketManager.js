@@ -1,6 +1,7 @@
 const EventEmitter = require("events");
 const WebSocket = require("ws");
-const { correlationIdManager } = require("../../shared/utility/correlationId");
+const CorrelationId = require("../../shared/utility/correlationId");
+const { correlationIdManager } = CorrelationId;
 
 class WebSocketManager extends EventEmitter {
   constructor(apiBaseURL) {

@@ -1,4 +1,5 @@
-const { correlationIdManager } = require("../../shared/utility/correlationId");
+const CorrelationId = require("../../shared/utility/correlationId");
+const { correlationIdManager } = CorrelationId;
 
 class IpcRoute {
   constructor(prefix = "") {

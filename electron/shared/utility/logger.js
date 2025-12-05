@@ -1,4 +1,5 @@
-const { correlationIdManager } = require("./correlationId");
+const CorrelationId = require("./correlationId");
+const { correlationIdManager } = CorrelationId;
 
 /**
  * Correlation ID를 포함한 로거 유틸리티
