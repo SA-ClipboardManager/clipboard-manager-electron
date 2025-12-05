@@ -1,41 +1,64 @@
 const { randomUUID } = require("crypto");
 
 /**
- * Correlation ID 생성 및 관리 유틸리티
- * 요청 추적을 위한 고유 ID를 생성하고 관리합니다.
+ * Correlation ID 관리 유틸리티
+ * 요청 추적을 위한 고유 ID 생성 및 관리
  */
-class CorrelationId {
+class CorrelationIdManager {
+  constructor() {
+    // AsyncLocalStorage를 사용하면 더 좋지만, Node.js 12.17+ 필요
+    // 여기서는 간단히 Map 기반으로 관리
+    this.contextMap = new Map();
+  }
+
   /**
    * 새로운 correlation ID 생성
    * @returns {string} UUID v4 형식의 correlation ID
    */
-  static generate() {
+  generate() {
     return randomUUID();
   }
 
   /**
-   * HTTP 요청 헤더명
+   * 현재 컨텍스트에 correlation ID 설정
+   * @param {string} contextKey - 컨텍스트 식별자 (예: IPC event, HTTP request ID)
+   * @param {string} correlationId - correlation ID
    */
-  static get HEADER_NAME() {
-    return "X-Correlation-ID";
+  set(contextKey, correlationId) {
+    this.contextMap.set(contextKey, correlationId);
   }
 
   /**
-   * WebSocket 메시지 필드명
+   * 현재 컨텍스트의 correlation ID 조회
+   * @param {string} contextKey - 컨텍스트 식별자
+   * @returns {string|null}
    */
-  static get WS_FIELD_NAME() {
-    return "correlationId";
+  get(contextKey) {
+    return this.contextMap.get(contextKey) || null;
   }
 
   /**
-   * 로그 출력용 포맷
-   * @param {string} correlationId
-   * @param {string} message
+   * 컨텍스트 정리
+   * @param {string} contextKey - 컨텍스트 식별자
+   */
+  clear(contextKey) {
+    this.contextMap.delete(contextKey);
+  }
+
+  /**
+   * correlation ID 생성 또는 기존 ID 반환
+   * @param {string} [existingId] - 기존 correlation ID (있으면 재사용)
    * @returns {string}
    */
-  static formatLog(correlationId, message) {
-    return `[CID: ${correlationId?.slice(0, 8) || "N/A"}] ${message}`;
+  getOrCreate(existingId) {
+    return existingId || this.generate();
   }
 }
 
-module.exports = CorrelationId;
+/** 싱글톤 인스턴스 */
+const correlationIdManager = new CorrelationIdManager();
+
+module.exports = {
+  CorrelationIdManager,
+  correlationIdManager,
+};
