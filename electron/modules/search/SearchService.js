@@ -67,6 +67,23 @@ class SearchService {
         .sort((a, b) => a._score - b._score || b.created_at - a.created_at)
         .map((item) => {
           const { _score, ...rest } = item;
+
+          let imageMeta = null;
+          let thumbnailUrl = null;
+          if (rest.type === 'img' && rest.image_meta) {
+            const meta = rest.image_meta;
+            thumbnailUrl = getThumbnailUrlByUuid(rest.id);
+
+            console.log('[SearchService] 로컬 이미지 메타 처리:', { thumbnailUrl });
+
+            rest.content = thumbnailUrl;
+
+            imageMeta = {
+              ...meta,
+              thumbnail_path: thumbnailUrl,
+            };
+          }
+
           return {
             id: rest.id,
             type: rest.type,
@@ -74,7 +91,7 @@ class SearchService {
             format: rest.format,
             created_at: rest.created_at,
             tags: rest.tag_names ? rest.tag_names.split(',') : [],
-            imageMeta: rest.image_meta || null,
+            imageMeta: imageMeta,
             shared: 'local',
           };
         });
@@ -113,15 +130,28 @@ class SearchService {
 
   async keywordLocalCloudSearch(query, options = {}) {
     try {
+      // 로컬 검색 먼저 실행 (항상 성공해야 함)
       const localResults = await this.keywordLocalSearch(query, options);
-      const cloudResults = await this.keywordCloudSearch(query);
+      console.log(`[SearchService] 로컬 검색 완료: ${localResults.length}개`);
+
+      // 클라우드 검색 시도 (실패해도 로컬 결과는 반환)
+      let cloudResults = [];
+      try {
+        cloudResults = await this.keywordCloudSearch(query);
+        console.log(`[SearchService] 클라우드 검색 완료: ${cloudResults.length}개`);
+      } catch (cloudError) {
+        console.warn(`[SearchService] 클라우드 검색 실패 (로컬 결과만 반환): ${cloudError.message}`);
+        // 클라우드 검색 실패는 무시하고 로컬 결과만 반환
+      }
 
       return this.mergeItems(localResults, cloudResults);
     } catch (error) {
+      // 로컬 검색도 실패한 경우에만 에러 throw
+      console.error(`[SearchService] 검색 실패:`, error);
       throw CCDError.create('E610', {
         module: 'SearchService',
-        context: '검색 실패',
-        message: error.message,
+        context: '통합 검색 실패',
+        message: error.message || '검색 중 오류가 발생했습니다',
       });
     }
   }
