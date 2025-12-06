@@ -1,4 +1,5 @@
-const CorrelationId = require("../../shared/utility/CorrelationId");
+const CorrelationId = require("../../shared/utility/correlationId");
+const { correlationIdManager } = CorrelationId;
 
 class IpcRoute {
   constructor(prefix = "") {
@@ -10,17 +11,36 @@ class IpcRoute {
   }
 
   /**
-   * IPC 이벤트 로깅 (correlation ID 포함)
-   * @param {string} eventName
-   * @param {string} correlationId
-   * @param {string} direction - 'send' 또는 'receive'
+   * IPC 이벤트에 correlation ID 추가
+   * @param {Electron.IpcMainEvent} event - IPC 이벤트
+   * @param {string} [correlationId] - 기존 correlation ID (없으면 생성)
+   * @returns {string} correlation ID
    */
-  log(eventName, correlationId, direction = "receive") {
-    const fullEvent = this.build(eventName);
-    console.log(
-      CorrelationId.formatLog(correlationId, `IPC ${direction}: ${fullEvent}`)
-    );
+  attachCorrelationId(event, correlationId) {
+    const cId = correlationIdManager.getOrCreate(correlationId);
+    // event sender의 frameId를 키로 사용
+    const contextKey = `ipc-${event.sender.id}-${event.frameId}`;
+    correlationIdManager.set(contextKey, cId);
+    return cId;
+  }
+
+  /**
+   * IPC 이벤트에서 correlation ID 조회
+   * @param {Electron.IpcMainEvent} event - IPC 이벤트
+   * @returns {string|null} correlation ID
+   */
+  getCorrelationId(event) {
+    const contextKey = `ipc-${event.sender.id}-${event.frameId}`;
+    return correlationIdManager.get(contextKey);
+  }
+
+  /**
+   * IPC 이벤트 처리 완료 시 호출
+   * @param {Electron.IpcMainEvent} event - IPC 이벤트
+   */
+  clearCorrelationId(event) {
+    const contextKey = `ipc-${event.sender.id}-${event.frameId}`;
+    correlationIdManager.clear(contextKey);
   }
 }
-
 module.exports = IpcRoute;

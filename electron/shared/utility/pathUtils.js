@@ -1,9 +1,9 @@
-const { app } = require("electron");
-const path = require("path");
-const fs = require("fs");
+const { app } = require('electron');
+const path = require('path');
+const fs = require('fs');
 
-const root = path.join(app.getPath("documents"), "CCD");
-const imagesDir = path.join(app.getPath("userData"), "images");
+const root = path.join(app.getPath('documents'), 'CCD');
+const imagesDir = path.join(app.getPath('userData'), 'images');
 
 const makeFileUrl = (absPath) => {
   if (!absPath) return null;
@@ -21,9 +21,9 @@ const makeFileUrl = (absPath) => {
   // Check if path is under cloud images directory (AppData/ccd-electron/images)
   if (absPath.includes(imagesDir)) {
     const rel = path.relative(imagesDir, absPath);
-    if (!rel.startsWith("..")) {
+    if (!rel.startsWith('..')) {
       // Valid path under images directory
-      const posix = rel.split(path.sep).join("/");
+      const posix = rel.split(path.sep).join('/');
       return `ccd://images/${encodeURI(posix)}`;
     }
   }
@@ -31,42 +31,46 @@ const makeFileUrl = (absPath) => {
   // Otherwise, use the Documents/CCD root
   const rel = path.relative(root, absPath);
   if (!rel) return null; // root 자체일 경우 생성 안함
-  const posix = rel.split(path.sep).join("/");
+  const posix = rel.split(path.sep).join('/');
   return `ccd://${encodeURI(posix)}`;
 };
 
 const resolveCcdUrl = (ccdUrl) => {
-  if (!ccdUrl || !ccdUrl.startsWith("ccd://")) return ccdUrl;
-  const encoded = ccdUrl.replace(/^ccd:\/\//, "");
+  if (!ccdUrl || !ccdUrl.startsWith('ccd://')) return ccdUrl;
+  const encoded = ccdUrl.replace(/^ccd:\/\//, '');
   const decodedPosix = decodeURI(encoded);
 
   // Check if this is a cloud images path (ccd://images/...)
-  if (decodedPosix.startsWith("images/")) {
-    const relPath = decodedPosix.substring("images/".length);
-    const platformSegments = relPath.split("/").filter(Boolean);
+  if (decodedPosix.startsWith('images/')) {
+    const relPath = decodedPosix.substring('images/'.length);
+    const platformSegments = relPath.split('/').filter(Boolean);
     return path.join(imagesDir, ...platformSegments);
   }
 
   // Otherwise, use Documents/CCD root
-  const platformSegments = decodedPosix.split("/").filter(Boolean);
+  const platformSegments = decodedPosix.split('/').filter(Boolean);
   return path.join(root, ...platformSegments);
+};
+
+/**
+ * UUID 기반 썸네일 경로를 ccd:// URL로 생성
+ * @param {string} uuid - 이미지 UUID
+ * @returns {string} ccd://thumbnails/thumb_<uuid>.png
+ */
+const getThumbnailUrlByUuid = (uuid) => {
+  if (!uuid) return null;
+  return `ccd://thumbnails/thumb_${uuid}.png`;
 };
 
 function transformItem(item, imageMeta = null, tags = []) {
   let processedImageMeta = null;
   const tagNames = tags;
 
-  if (item.type === "img" && imageMeta) {
-    const originalExists =
-      imageMeta.file_path && fs.existsSync(imageMeta.file_path);
-    const thumbExists =
-      imageMeta.thumbnail_path && fs.existsSync(imageMeta.thumbnail_path);
-    const originalUrl = originalExists
-      ? makeFileUrl(imageMeta.file_path)
-      : null;
-    const thumbnailUrl = thumbExists
-      ? makeFileUrl(imageMeta.thumbnail_path)
-      : originalUrl;
+  if (item.type === 'img' && imageMeta) {
+    const originalExists = imageMeta.file_path && fs.existsSync(imageMeta.file_path);
+    const thumbExists = imageMeta.thumbnail_path && fs.existsSync(imageMeta.thumbnail_path);
+    const originalUrl = originalExists ? makeFileUrl(imageMeta.file_path) : null;
+    const thumbnailUrl = thumbExists ? makeFileUrl(imageMeta.thumbnail_path) : originalUrl;
     processedImageMeta = {
       ...imageMeta,
       originalUrl,
@@ -87,4 +91,4 @@ function transformItem(item, imageMeta = null, tags = []) {
   };
 }
 
-module.exports = { transformItem, makeFileUrl, resolveCcdUrl };
+module.exports = { transformItem, makeFileUrl, resolveCcdUrl, getThumbnailUrlByUuid };

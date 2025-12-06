@@ -48,6 +48,15 @@ class serviceConfig {
     const { clipboardRepo, outboxRepo } = this.repositories; // outboxRepo 꺼내기
     const apiBaseURL = process.env.CLOUD_API_BASE_URL;
 
+    console.log("[serviceConfig] Environment variables:");
+    console.log("[serviceConfig] CLOUD_API_BASE_URL =", apiBaseURL);
+    console.log(
+      "[serviceConfig] All env keys:",
+      Object.keys(process.env).filter(
+        (k) => k.includes("CLOUD") || k.includes("API")
+      )
+    );
+
     // 2. 기초 서비스 생성
     const tokenStorage = new TokenStorage();
     const authService = new AuthService(tokenStorage, { apiBaseURL });
@@ -97,6 +106,7 @@ class serviceConfig {
       NotifyService: notifyService,
       SearchService: searchService,
       ClipboardRepository: clipboardRepo, // AuthModule에서 사용
+      DatabaseContext: this.infrastructure.dbContext, // CloudModule에서 TaggingSync 생성 시 사용
     };
 
     console.log(
