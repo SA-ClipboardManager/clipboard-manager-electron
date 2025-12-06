@@ -11,40 +11,21 @@ class TagRepository {
       throw new Error('TagRepository requires a valid DatabaseContext instance');
     }
     this.db = dbContext.getDb();
-    this._init();
-  }
-
-  _init() {
-    // better-sqlite3는 동기식이므로 exec 사용
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS tag (
-        local_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE,
-        source TEXT
-      )
-    `);
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS data_tag (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        data_id TEXT,
-        tag_id INTEGER,
-        UNIQUE(data_id, tag_id)
-      )
-    `);
   }
 
   getOrCreateTag(name, source = 'auto') {
-    const existing = this.db.prepare('SELECT local_id FROM tag WHERE name = ?').get(name);
-    if (existing) return existing.local_id;
+    const existing = this.db.prepare('SELECT tag_id FROM tag WHERE name = ? AND source = ?').get(name, source);
+    if (existing) return existing.tag_id;
 
+    const newId = require('crypto').randomUUID();
     try {
-      const result = this.db.prepare('INSERT INTO tag(name, source) VALUES(?, ?)').run(name, source);
-      return result.lastInsertRowid;
+      this.db.prepare('INSERT INTO tag(tag_id, name, source) VALUES(?, ?, ?)').run(newId, name, source);
+      return newId;
     } catch (err) {
       // UNIQUE 제약 위반 시 재조회
       if (err.code === 'SQLITE_CONSTRAINT' || err.message.includes('UNIQUE')) {
-        const row = this.db.prepare('SELECT local_id FROM tag WHERE name = ?').get(name);
-        return row ? row.local_id : null;
+        const row = this.db.prepare('SELECT tag_id FROM tag WHERE name = ? AND source = ?').get(name, source);
+        return row ? row.tag_id : null;
       }
       throw err;
     }
