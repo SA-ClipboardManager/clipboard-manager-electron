@@ -1,25 +1,20 @@
 // infrastructure/database/DatabaseContext.js
-const path = require("path");
-const { app } = require("electron");
-const Database = require("better-sqlite3");
-const fs = require("fs-extra");
-const CCDError = require("../../shared/errors/CCDError");
+const path = require('path');
+const { app } = require('electron');
+const Database = require('better-sqlite3');
+const fs = require('fs-extra');
+const CCDError = require('../../shared/errors/CCDError');
 
 class DatabaseContext {
   constructor() {
     // 환경변수로 인스턴스 ID 설정 가능 (다중 인스턴스 테스트용)
-    const instanceId = process.env.ELECTRON_INSTANCE_ID || "default";
-    const dbFileName =
-      instanceId === "default"
-        ? "clipboard-manager.db"
-        : `clipboard-manager-${instanceId}.db`;
+    const instanceId = process.env.ELECTRON_INSTANCE_ID || 'default';
+    const dbFileName = instanceId === 'default' ? 'clipboard-manager.db' : `clipboard-manager-${instanceId}.db`;
 
-    this.dbPath = path.join(app.getPath("userData"), dbFileName);
+    this.dbPath = path.join(app.getPath('userData'), dbFileName);
     this.db = null;
 
-    console.log(
-      `[DatabaseContext] Instance: ${instanceId}, DB: ${this.dbPath}`
-    );
+    console.log(`[DatabaseContext] Instance: ${instanceId}, DB: ${this.dbPath}`);
   }
 
   /**
@@ -35,19 +30,19 @@ class DatabaseContext {
       this.db = new Database(this.dbPath); // 필요 시 { verbose: console.log } 옵션 추가
 
       // 3. 필수 Pragma 설정
-      this.db.pragma("foreign_keys = ON");
-      this.db.pragma("journal_mode = WAL"); // 성능 향상을 위해 WAL 모드 추천
+      this.db.pragma('foreign_keys = ON');
+      this.db.pragma('journal_mode = WAL'); // 성능 향상을 위해 WAL 모드 추천
 
       // 4. 스키마 생성
       this._createTables();
       this._createIndexes();
       this._setupFTS();
 
-      console.log("DatabaseContext initialized successfully at:", this.dbPath);
+      console.log('DatabaseContext initialized successfully at:', this.dbPath);
     } catch (error) {
-      throw CCDError.create("E610", {
-        module: "DatabaseContext",
-        context: "데이터베이스 초기화 실패",
+      throw CCDError.create('E610', {
+        module: 'DatabaseContext',
+        context: '데이터베이스 초기화 실패',
         message: error.message,
       });
     }
@@ -55,7 +50,7 @@ class DatabaseContext {
 
   getDb() {
     if (!this.db) {
-      throw new Error("Database not initialized. Call initialize() first.");
+      throw new Error('Database not initialized. Call initialize() first.');
     }
     return this.db;
   }
@@ -97,13 +92,12 @@ class DatabaseContext {
         thumbnail_path TEXT,      
         FOREIGN KEY (data_id) REFERENCES clipboard(id) ON DELETE CASCADE
       );
-      
+
       CREATE TABLE IF NOT EXISTS tag (
-        tag_id TEXT, 
-        local_id TEXT PRIMARY KEY,
+        tag_id TEXT PRIMARY KEY,
         name TEXT NOT NULL COLLATE NOCASE,
         source TEXT NOT NULL CHECK (source IN ('auto', 'user')),
-        UNIQUE (name, source)  
+        UNIQUE (name, source)
       );
 
       CREATE TABLE IF NOT EXISTS sync_outbox (
@@ -125,9 +119,8 @@ class DatabaseContext {
         tag_id TEXT NOT NULL,
         CONSTRAINT data_tag_pk PRIMARY KEY (data_id,tag_id),
         CONSTRAINT data_tag_clipboard_FK_1 FOREIGN KEY (data_id) REFERENCES clipboard(id) ON DELETE CASCADE,
-        CONSTRAINT data_tag_tag_FK_1 FOREIGN KEY (tag_id) REFERENCES tag(local_id) ON DELETE CASCADE ON UPDATE CASCADE
+        CONSTRAINT data_tag_tag_FK_1 FOREIGN KEY (tag_id) REFERENCES tag(tag_id) ON DELETE CASCADE ON UPDATE CASCADE
       );
-
     `);
   }
 

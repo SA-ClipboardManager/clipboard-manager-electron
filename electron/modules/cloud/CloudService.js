@@ -428,19 +428,33 @@ class CloudService extends EventEmitter {
             ? thumbnailUrl
             : `${this.apiBaseURL}${thumbnailUrl}`;
 
+          console.log(
+            CorrelationId.formatLog(
+              correlationId,
+              `Downloading thumbnail from: ${url}`
+            )
+          );
+
           localThumbnailPath = await this._downloadImage(
             url,
             filename,
             correlationId
           );
         } catch (e) {
-          console.warn(
+          console.error(
             CorrelationId.formatLog(
               correlationId,
               `Thumbnail download failed for ${remoteItem.id}: ${e.message}`
             )
           );
         }
+      } else {
+        console.warn(
+          CorrelationId.formatLog(
+            correlationId,
+            `No thumbnail URL for ${remoteItem.id}`
+          )
+        );
       }
 
       // 2. 원본 이미지도 바로 다운로드 (content 또는 file_path 사용)
@@ -454,19 +468,33 @@ class CloudService extends EventEmitter {
             ? fileUrl
             : `${this.apiBaseURL}${fileUrl}`;
 
+          console.log(
+            CorrelationId.formatLog(
+              correlationId,
+              `Downloading original image from: ${url}`
+            )
+          );
+
           localFilePath = await this._downloadImage(
             url,
             filename,
             correlationId
           );
         } catch (e) {
-          console.warn(
+          console.error(
             CorrelationId.formatLog(
               correlationId,
               `Original image download failed for ${remoteItem.id}: ${e.message}`
             )
           );
         }
+      } else {
+        console.warn(
+          CorrelationId.formatLog(
+            correlationId,
+            `No file URL for ${remoteItem.id}. Content: ${remoteItem.content}, FilePath: ${remoteItem.image_meta.file_path}`
+          )
+        );
       }
 
       meta = {

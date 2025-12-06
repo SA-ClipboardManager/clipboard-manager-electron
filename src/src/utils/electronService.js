@@ -22,14 +22,6 @@ export const offClipboardUpdated = (handler) => {
   window.electronAPI?.offClipboardUpdated?.(handler);
 };
 
-export const saveDroppedWebImage = async (data) => {
-  return window.electronAPI?.saveDroppedWebImage?.(data);
-};
-
-export const saveDroppedWebText = async (data) => {
-  return window.electronAPI?.saveDroppedWebText?.(data);
-};
-
 export const pasteItem = async (id) => {
   return window.electronAPI?.pasteItem?.(id);
 };
@@ -107,4 +99,12 @@ export const onItemUpdated = (handler) => {
 };
 export const offItemUpdated = (handler) => {
   window.electronAPI?.offItemUpdated?.(handler);
+};
+
+// 태깅 결과 이벤트
+export const onTaggingResult = (handler) => {
+  window.electronAPI?.onTaggingResult?.(handler);
+};
+export const offTaggingResult = (handler) => {
+  window.electronAPI?.offTaggingResult?.(handler);
 };
