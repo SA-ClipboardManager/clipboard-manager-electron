@@ -148,7 +148,7 @@ const BottomBar = ({ getSelectedItemIds, refetch, setItems, loginInfo }) => {
             alt="Upload"
             className="w-[3.2rem] h-[3.2rem] mb-1"
           />
-          <span className="text-xs underline">Upload</span>
+          <span className="text-xs underline"></span>
         </div>
 
         <div
@@ -181,14 +181,7 @@ const BottomBar = ({ getSelectedItemIds, refetch, setItems, loginInfo }) => {
               showToast('오류 발생', 'error');
             }
           }}
-        >
-          <img
-            src={downloadUrl}
-            alt="Download"
-            className="w-[3.2rem] h-[3.2rem] mb-1"
-          />
-          <span className="text-xs underline">Download</span>
-        </div>
+        ></div>
       </div>
       <div className="absolute top-[48rem] flex flex-col items-end z-50">
         {toasts.map((toast) => (
