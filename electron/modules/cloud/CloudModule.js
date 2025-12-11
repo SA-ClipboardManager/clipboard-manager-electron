@@ -10,6 +10,7 @@ class CloudModule extends BaseModule {
     // Single dependency
     this.cloudService = services.CloudService;
     this.syncCoordinator = services.SyncCoordinator;
+    this.dbContext = services.DatabaseContext; // DB 컨텍스트 주입
 
     if (!this.cloudService) {
       console.error("[CloudModule] CloudService not initialized");
@@ -49,16 +50,19 @@ class CloudModule extends BaseModule {
   _setupWebSocketForwarding() {
     const wsManager = this.cloudService.wsManager;
 
+    console.log("[CloudModule] 🔌 Setting up WebSocket event forwarding");
+
     wsManager.on("sync-notification", async (data) => {
       // Extract item ID from either data.id or data.data_id
       const itemId = data.data_id || data.id;
 
-      console.log(`[CloudModule] Sync notification received:`, {
+      console.log(`[CloudModule] 📡 Sync notification received:`, {
         itemId,
         data_id: data.data_id,
         id: data.id,
         event: data.event,
         isProcessing: this.syncCoordinator.isItemProcessing(itemId),
+        fullData: data,
       });
 
       // If an item is currently being uploaded by this client, its state will be
@@ -81,22 +85,29 @@ class CloudModule extends BaseModule {
         // data_id가 있는 경우 (crud:imgSave_success, crud:txtSave_success 등)
         if (data.data_id) {
           // 서버에서 해당 아이템의 전체 정보를 다시 조회
+          console.log(`[CloudModule] Fetching full item for data_id: ${data.data_id}`);
           const response = await this.cloudService.uploadClient.get(
             `/api/v1/clipboard/${data.data_id}`
           );
           const fullItem = response.data;
+          console.log(`[CloudModule] Fetched fullItem:`, fullItem);
+
 
           // 전체 정보로 저장
+          console.log(`[CloudModule] Saving item to local DB with _saveRemoteItemToLocal...`);
           await this.cloudService._saveRemoteItemToLocal(fullItem);
           console.log("[CloudModule] Item saved to local DB:", data.data_id);
 
           // Renderer에 알림 전송하여 UI 갱신
+          console.log(`[CloudModule] Sending 'sync-notification' to renderer...`);
           this._sendToRenderer("sync-notification", fullItem);
         } else {
           // 기존 로직 (전체 아이템 정보가 포함된 경우)
+          console.log(`[CloudModule] No data_id found, processing raw data. Saving item to local DB...`);
           await this.cloudService._saveRemoteItemToLocal(data);
           console.log("[CloudModule] Item saved to local DB:", data.id);
-
+          
+          console.log(`[CloudModule] Sending 'sync-notification' to renderer...`);
           this._sendToRenderer("sync-notification", data);
         }
       } catch (error) {
@@ -110,12 +121,34 @@ class CloudModule extends BaseModule {
       this._sendToRenderer("item-updated", transformedItem);
     });
 
+    // 태깅 결과 수신 시 로컬 DB에 태그 저장
+    try {
+      const TaggingSync = require("./TaggingSync");
+      const taggingSync = new TaggingSync(this.dbContext);
+      wsManager.on("tagging-result", ({ dataId, tags }) => {
+        try {
+          taggingSync.handleTaggingResult({ dataId, tags });
+          this._sendToRenderer("tagging-result", { dataId, tags });
+        } catch (e) {
+          console.error("[CloudModule] Failed to persist tagging-result:", e);
+        }
+      });
+    } catch (e) {
+      console.error("[CloudModule] TaggingSync setup failed:", e);
+    }
+
     // Forward connection state changes
     wsManager.on("connected", () => {
+      console.log(
+        "[CloudModule] ✅ WebSocket CONNECTED - Real-time sync is now active"
+      );
       this._sendToRenderer("ws-connected");
     });
 
     wsManager.on("disconnected", () => {
+      console.log(
+        "[CloudModule] ❌ WebSocket DISCONNECTED - Real-time sync is now inactive"
+      );
       this._sendToRenderer("ws-disconnected");
     });
   }
@@ -147,7 +180,12 @@ class CloudModule extends BaseModule {
 
     this.syncCoordinator.on("upload-failed", (data) => {
       console.log("[CloudModule] Upload failed:", data.itemId);
-      this._sendToRenderer("upload-failed", data);
+      // Error 객체는 직렬화할 수 없으므로 message만 추출
+      const serializableData = {
+        itemId: data.itemId,
+        error: data.error?.message || data.error || "Unknown error",
+      };
+      this._sendToRenderer("upload-failed", serializableData);
     });
 
     // 초기 동기화 완료 이벤트 전달

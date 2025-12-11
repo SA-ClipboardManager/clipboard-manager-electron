@@ -49,7 +49,11 @@ const App = () => {
     const filtered = items.filter((item) => {
       // Location 필터
       if (locationFilter === "Local" && item.shared !== "local") return false;
-      if (locationFilter === "Cloud" && item.shared !== "cloud") return false;
+      if (
+        locationFilter === "Cloud" &&
+        (item.shared === "local" || !item.shared)
+      )
+        return false;
 
       // 날짜 필터
       const ts = item.timestamp;

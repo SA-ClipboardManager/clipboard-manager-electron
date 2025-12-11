@@ -1,35 +1,14 @@
 const axios = require("axios");
 const CCDError = require("../errors/CCDError");
-const CorrelationId = require("./CorrelationId");
+const CorrelationId = require("./correlationId");
+const { correlationIdManager } = CorrelationId;
 
 const createHttpClient = (baseURL) => {
-  const instance = axios.create({
+  return axios.create({
     baseURL,
     headers: { "Content-Type": "application/json" },
     timeout: 5000, // 공통 타임아웃 설정 등
   });
-
-  // Correlation ID 인터셉터 추가
-  instance.interceptors.request.use(
-    (config) => {
-      const correlationId = CorrelationId.generate();
-      config.headers = config.headers || {};
-      config.headers[CorrelationId.HEADER_NAME] = correlationId;
-
-      // 로그에 correlation ID 포함
-      console.log(
-        CorrelationId.formatLog(
-          correlationId,
-          `${config.method?.toUpperCase()} ${config.url}`
-        )
-      );
-
-      return config;
-    },
-    (error) => Promise.reject(error)
-  );
-
-  return instance;
 };
 
 /**
@@ -104,25 +83,15 @@ const createAuthenticatedHttpClient = (baseURL, deps) => {
 
   instance.interceptors.request.use(
     (config) => {
-      // Correlation ID 추가
-      const correlationId = CorrelationId.generate();
-      config.headers = config.headers || {};
-      config.headers[CorrelationId.HEADER_NAME] = correlationId;
-
-      // 인증 토큰 추가
       const token = tokenStorage.getAccessToken();
       if (token) {
+        config.headers = config.headers || {};
         config.headers.Authorization = `Bearer ${token}`;
       }
-
-      // 로그에 correlation ID 포함
-      console.log(
-        CorrelationId.formatLog(
-          correlationId,
-          `${config.method?.toUpperCase()} ${config.url}`
-        )
-      );
-
+      // Correlation ID 추가
+      const correlationId =
+        config.headers["X-Correlation-ID"] || correlationIdManager.generate();
+      config.headers["X-Correlation-ID"] = correlationId;
       return config;
     },
     (error) => Promise.reject(error)

@@ -16,6 +16,8 @@ import {
   offUploadFailed,
   onItemUpdated,
   offItemUpdated,
+  onTaggingResult,
+  offTaggingResult,
   deleteItem,
 } from "./electronService";
 
@@ -24,10 +26,14 @@ const useClipboardRecords = () => {
 
   // 포맷 공통 함수
   const formatItem = (item) => {
+    // 고유한 itemId 생성: id가 있으면 사용, 없으면 created_at + random으로 고유성 보장
+    const uniqueItemId =
+      item.id || item.itemId || `${item.created_at || Date.now()}_${uuidv4()}`;
+
     const formatted = {
       ...item,
       selected: false,
-      itemId: item.itemId ?? item.id ?? uuidv4(),
+      itemId: uniqueItemId,
       type:
         item.type === "txt"
           ? "text"
@@ -37,7 +43,8 @@ const useClipboardRecords = () => {
       timestamp: item.created_at ?? item.createdAt ?? Date.now(),
       fileName: item.fileName ?? "unnamed",
       ext: item.format?.split("/")?.[1] ?? "unknown",
-      shared: item.shared ?? (item.isSynced ? "both" : "local"),
+      // isSynced 값에 따라 shared 설정
+      shared: item.isSynced === true ? "both" : item.shared ?? "local",
       tags: item.tags ?? [],
     };
 
@@ -48,6 +55,13 @@ const useClipboardRecords = () => {
       formatted.thumbnail_path = item.meta?.thumbnail_path;
       formatted.file_path = item.meta?.file_path;
       formatted.content = item.content;
+
+      console.log(`[useClipboardRecords] Image item formatted:`, {
+        id: item.id,
+        src: formatted.src,
+        content: formatted.content,
+        meta: item.meta,
+      });
     } else if (item.type === "txt") {
       formatted.content = item.content;
     }
@@ -119,10 +133,28 @@ const useClipboardRecords = () => {
 
   // 실시간 동기화 알림 처리 (다른 디바이스에서 변경)
   useEffect(() => {
-    const handler = (data) => {
-      console.log("[sync-notification] Other device changed:", data);
-      // 서버에서 새 데이터가 들어왔으므로 전체 재조회
-      refetch();
+    const handler = (newItem) => {
+      console.log("[sync-notification] Other device changed:", newItem);
+      if (!newItem || !newItem.id) {
+        console.log("[sync-notification] Invalid payload, refetching all.");
+        refetch();
+        return;
+      }
+      const formattedItem = formatItem(newItem);
+      setItems((prev) => {
+        const exists = prev.some(
+          (item) => item.itemId === formattedItem.itemId
+        );
+        if (exists) {
+          // Item already exists, maybe update it
+          return prev.map((item) =>
+            item.itemId === formattedItem.itemId ? formattedItem : item
+          );
+        } else {
+          // Add the new item to the top
+          return [formattedItem, ...prev];
+        }
+      });
     };
     onSyncNotification?.(handler);
     return () => offSyncNotification?.(handler);
@@ -159,9 +191,10 @@ const useClipboardRecords = () => {
             if (item.itemId === data.itemId || item.id === data.itemId) {
               console.log("[Upload Success] Updating item:", {
                 before: item,
-                after: { ...item, ...updatedItem, shared: "both" },
+                after: { ...item, ...updatedItem },
               });
-              return { ...item, ...updatedItem, shared: "both" };
+              // formatItem에서 이미 isSynced를 기반으로 shared가 설정됨
+              return { ...item, ...updatedItem };
             }
             return item;
           });
@@ -213,6 +246,24 @@ const useClipboardRecords = () => {
       offItemUpdated?.(handleItemUpdated);
       offUploadFailed?.(handleUploadFailed);
     };
+  }, []);
+
+  // 태깅 결과 이벤트 처리
+  useEffect(() => {
+    const handleTaggingResult = ({ dataId, tags }) => {
+      console.log("[Tagging Result] Tags synced for:", dataId, tags);
+      // 해당 아이템의 태그만 부분 업데이트
+      setItems((prev) =>
+        prev.map((item) =>
+          item.itemId === dataId || item.id === dataId
+            ? { ...item, tags: tags || [] }
+            : item
+        )
+      );
+    };
+
+    onTaggingResult?.(handleTaggingResult);
+    return () => offTaggingResult?.(handleTaggingResult);
   }, []);
 
   useEffect(() => {
