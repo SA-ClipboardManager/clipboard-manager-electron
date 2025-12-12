@@ -93,7 +93,7 @@ class serviceConfig {
       clipboardService,
       cloudService
     );
-    const searchService = new SearchService(clipboardRepo, uploadClient); // 인증 & 갱신 포함된 axios 주입 (CloudService.uploadClient 재사용)
+    const searchService = new SearchService(clipboardRepo, uploadClient, apiBaseURL); // 인증 & 갱신 포함된 axios 주입 + apiBaseURL for HTTP image URLs
 
     // 6. 서비스 등록
     this.services = {

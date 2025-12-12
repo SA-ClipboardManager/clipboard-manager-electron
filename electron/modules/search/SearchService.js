@@ -6,11 +6,13 @@ class SearchService {
    *
    * @param {*} clipboardRepository   // 로컬 검색에 필요
    * @param {*} axiosInstance         // CloudService의 axiosInstance 주입
+   * @param {*} apiBaseURL            // 클라우드 이미지 HTTP URL 생성용
    */
 
-  constructor(clipboardRepository, axiosInstance) {
+  constructor(clipboardRepository, axiosInstance, apiBaseURL) {
     this.clipboardRepository = clipboardRepository;
     this.axios = axiosInstance;
+    this.apiBaseURL = apiBaseURL;
     this.cache = {
       all: { data: null, valid: false },
     };
@@ -70,17 +72,30 @@ class SearchService {
 
           let imageMeta = null;
           let thumbnailUrl = null;
+
+          // 클라우드 동기화된 아이템인지 확인 (is_cloud_item=1 또는 is_synced=1)
+          const isCloudSynced = rest.is_cloud_item === 1 || rest.is_synced === 1;
+
           if (rest.type === 'img' && rest.image_meta) {
             const meta = rest.image_meta;
-            thumbnailUrl = getThumbnailUrlByUuid(rest.id);
 
-            console.log('[SearchService] 로컬 이미지 메타 처리:', { thumbnailUrl });
+            if (isCloudSynced && meta.thumbnail_path) {
+              // 클라우드 이미지: HTTP URL 사용
+              thumbnailUrl = meta.thumbnail_path.startsWith('http') ? meta.thumbnail_path : `${this.apiBaseURL}${meta.thumbnail_path}`;
+              console.log('[SearchService] 클라우드 이미지 메타 처리:', { thumbnailUrl });
+            } else {
+              // 로컬 전용 이미지: ccd:// URL 사용
+              thumbnailUrl = getThumbnailUrlByUuid(rest.id);
+              console.log('[SearchService] 로컬 이미지 메타 처리:', { thumbnailUrl });
+            }
 
             rest.content = thumbnailUrl;
 
             imageMeta = {
               ...meta,
               thumbnail_path: thumbnailUrl,
+              originalUrl: meta.file_path && meta.file_path.startsWith('http') ? meta.file_path : meta.file_path ? `${this.apiBaseURL}${meta.file_path}` : null,
+              thumbnailUrl: thumbnailUrl,
             };
           }
 
@@ -92,7 +107,7 @@ class SearchService {
             created_at: rest.created_at,
             tags: rest.tag_names ? rest.tag_names.split(',') : [],
             imageMeta: imageMeta,
-            shared: 'local',
+            shared: isCloudSynced ? 'both' : 'local',
           };
         });
 
@@ -115,10 +130,31 @@ class SearchService {
 
       const items = response.data.items || [];
 
-      return items.map((item) => ({
-        ...item,
-        shared: 'cloud',
-      }));
+      return items.map((item) => {
+        // 서버에서 이미 HTTP URL로 변환된 imageMeta 사용
+        let processedItem = {
+          ...item,
+          shared: 'cloud',
+        };
+
+        // 이미지 타입인 경우 content를 thumbnail URL로 설정
+        if (item.type === 'img' && item.imageMeta) {
+          const thumbnailUrl = item.imageMeta.thumbnail_path || item.imageMeta.thumbnailUrl;
+          if (thumbnailUrl) {
+            processedItem.content = thumbnailUrl.startsWith('http') ? thumbnailUrl : `${this.apiBaseURL}${thumbnailUrl}`;
+          }
+
+          // imageMeta도 HTTP URL로 보장
+          processedItem.imageMeta = {
+            ...item.imageMeta,
+            thumbnailUrl: processedItem.content,
+            originalUrl: item.imageMeta.file_path?.startsWith('http') ? item.imageMeta.file_path : item.imageMeta.file_path ? `${this.apiBaseURL}${item.imageMeta.file_path}` : null,
+          };
+        }
+
+        console.log('[SearchService] 클라우드 키워드 검색 결과:', processedItem);
+        return processedItem;
+      });
     } catch (error) {
       throw CCDError.create('E610', {
         module: 'SearchService',
@@ -173,7 +209,6 @@ class SearchService {
     }
      */
 
-
   async vectorCloudSearch(query, topK = 10) {
     try {
       // Embedding-Service 게이트웨이 경로
@@ -189,24 +224,25 @@ class SearchService {
       const items = results.map((r) => {
         console.log(`[SearchService] CLIP Search - Raw Result:`, r);
 
-        // UUID를 기반으로 썸네일 경로 생성 (Documents/CCD/thumbnails/thumb_<uuid>.png)
-        const thumbnailUrl = getThumbnailUrlByUuid(r.uuid);
+        // 클라우드 이미지는 HTTP URL 사용 (/local/thumbnail/<uuid>_thumb.jpg)
+        const thumbnailPath = `/local/thumbnail/${r.uuid}_thumb.jpg`;
+        const thumbnailUrl = `${this.apiBaseURL}${thumbnailPath}`;
 
         console.log(`[SearchService] CLIP Search - ID: ${r.uuid}, Thumbnail: ${thumbnailUrl}`);
 
         return {
           id: r.uuid,
           type: 'img',
-          content: thumbnailUrl, // ccd://thumbnails/thumb_<uuid>.png
+          content: thumbnailUrl, // HTTP URL for cloud image
           format: 'img',
           created_at: Date.now(),
           tags: [],
           meta: {
-            file_path: null, // 클라우드 검색 결과는 로컬 경로 없음
-            thumbnail_path: thumbnailUrl,
+            file_path: null, // 원본은 lazy loading
+            thumbnail_path: thumbnailPath,
           },
           imageMeta: {
-            originalUrl: null,
+            originalUrl: null, // 원본은 필요시 다운로드
             thumbnailUrl: thumbnailUrl,
           },
           shared: 'cloud',
