@@ -101,4 +101,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("tagging-result", (_, data) => callback(data)),
   offTaggingResult: (callback) =>
     ipcRenderer.removeListener("tagging-result", callback),
+
+  // UI 반영 지연 테스트
+  runUiDelayTest: (params) => ipcRenderer.invoke("run-ui-delay-test", params),
 });

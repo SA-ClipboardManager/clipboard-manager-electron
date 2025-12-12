@@ -16,6 +16,8 @@ class ClipboardListener extends EventEmitter {
     this.intervalId = null;
     this.imageProcessor = new ImageProcessor();
 
+    this.POLL_INTERVAL_MS = 200;
+
     // 상태 변수들
     this.lastText = null;
     this.lastImageHash = null;
@@ -47,7 +49,7 @@ class ClipboardListener extends EventEmitter {
 
     this.intervalId = setInterval(async () => {
       await this._checkClipboard();
-    }, 1000);
+    }, this.POLL_INTERVAL_MS);
   }
 
   stop() {

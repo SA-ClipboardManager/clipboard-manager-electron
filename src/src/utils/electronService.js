@@ -108,3 +108,8 @@ export const onTaggingResult = (handler) => {
 export const offTaggingResult = (handler) => {
   window.electronAPI?.offTaggingResult?.(handler);
 };
+
+// UI 반영 지연 테스트 트리거
+export const runUiDelayTest = async (params) => {
+  return window.electronAPI?.runUiDelayTest?.(params);
+};

@@ -145,7 +145,12 @@ class NotifyService {
   }
 
   notifyItemSaved(items) {
-    const transformedItems = items.map((item) =>
+    const stampedItems = items.map((item) => ({
+      ...item,
+      uiEmittedAt: item.uiEmittedAt || Date.now(),
+    }));
+
+    const transformedItems = stampedItems.map((item) =>
       this._transformItemPaths(item)
     );
     const win = BrowserWindow.getAllWindows()[0];
