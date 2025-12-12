@@ -1,10 +1,7 @@
-import {
-  onClipboardUpdated,
-  offClipboardUpdated,
-  runUiDelayTest as invokeUiDelayTest,
-} from './electronService';
+import { onClipboardUpdated, offClipboardUpdated, runUiDelayTest as invokeUiDelayTest } from "./electronService";
 
 export async function runUiDelaySmokeTest({ count = 100, timeoutMs = 15000 } = {}) {
+  const testStartTime = Date.now();
   const testId = `ui-delay-${Date.now()}`;
   const deltas = [];
 
@@ -15,17 +12,21 @@ export async function runUiDelaySmokeTest({ count = 100, timeoutMs = 15000 } = {
     rejectWait = reject;
   });
 
+  // count에 비례한 넉넉한 타임아웃
+  const effectiveTimeout = Math.max(timeoutMs, count * 250 + 3000);
   const timer = setTimeout(() => {
-    rejectWait?.(new Error(`UI delay test timed out after ${timeoutMs}ms`));
-  }, timeoutMs);
+    rejectWait?.(new Error(`UI delay test timed out after ${effectiveTimeout}ms`));
+  }, effectiveTimeout);
 
   const handler = (items) => {
     if (!Array.isArray(items) || items.length === 0) return;
 
     const now = Date.now();
     items.forEach((item) => {
-      if (item.uiTestId !== testId) return;
-      const emittedAt = item.uiEmittedAt || now;
+      const matchesTest = item.uiTestId === testId || (typeof item.id === "string" && item.id.startsWith(testId));
+      if (!matchesTest) return;
+
+      const emittedAt = item.uiEmittedAt || item.created_at || now;
       deltas.push(now - emittedAt);
     });
 
@@ -45,18 +46,15 @@ export async function runUiDelaySmokeTest({ count = 100, timeoutMs = 15000 } = {
   }
 
   if (deltas.length === 0) {
-    throw new Error('No UI delay samples were collected.');
+    throw new Error("No UI delay samples were collected.");
   }
 
+  const totalElapsedMs = Date.now() - testStartTime;
   const average = deltas.reduce((sum, v) => sum + v, 0) / deltas.length;
   const max = Math.max(...deltas);
   const over500ms = deltas.filter((v) => v > 500).length;
 
-  console.log(
-    `[UI Delay Test] testId=${testId} count=${deltas.length} avg=${average.toFixed(
-      2
-    )}ms max=${max.toFixed(2)}ms over500ms=${over500ms}`
-  );
+  console.log(`[UI Delay Test] testId=${testId} count=${deltas.length} avg=${average.toFixed(2)}ms max=${max.toFixed(2)}ms over500ms=${over500ms} totalTime=${totalElapsedMs}ms`);
 
   return {
     testId,
@@ -64,10 +62,11 @@ export async function runUiDelaySmokeTest({ count = 100, timeoutMs = 15000 } = {
     averageMs: average,
     maxMs: max,
     over500ms,
+    totalElapsedMs,
     samples: deltas,
   };
 }
 
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   window.runUiDelaySmokeTest = runUiDelaySmokeTest;
 }

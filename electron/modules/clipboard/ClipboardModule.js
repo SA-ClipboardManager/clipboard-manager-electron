@@ -1,17 +1,18 @@
 // src/main/modules/clipboard/ClipboardModule.js
-const BaseModule = require('../../main/core/BaseModule');
-const { ClipboardListener } = require('./ClipboardListener');
-const ImageProcessor = require('../../shared/utility/imageProcessor');
-const { app } = require('electron');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const BaseModule = require("../../main/core/BaseModule");
+const { ClipboardListener } = require("./ClipboardListener");
+const ImageProcessor = require("../../shared/utility/imageProcessor");
+const { app } = require("electron");
+const path = require("path");
+const { v4: uuidv4 } = require("uuid");
+const sharp = require("sharp");
 
 class ClipboardModule extends BaseModule {
   /**
    * @param {object} services
    */
   constructor(services) {
-    super(services, 'clipboard');
+    super(services, "clipboard");
     // this.service = services.ClipboardService; // ClipboardService 인스턴스
 
     this.services = services;
@@ -37,14 +38,12 @@ class ClipboardModule extends BaseModule {
     //   }
     // });
 
-    this.listener.on('change', async (payload) => {
+    this.listener.on("change", async (payload) => {
       try {
         // DB에 저장하고 저장된 항목 객체를 반환받음
         const savedItem = await this.service.saveFromListener(payload);
 
-        const itemForNotify = payload.imageMeta
-          ? { ...savedItem, meta: payload.imageMeta }
-          : savedItem;
+        const itemForNotify = payload.imageMeta ? { ...savedItem, meta: payload.imageMeta } : savedItem;
 
         // EtcService가 있으면 렌더러에 변경사항(증분)을 알림
         if (this.services && this.services.NotifyService && itemForNotify) {
@@ -52,7 +51,7 @@ class ClipboardModule extends BaseModule {
           this.services.NotifyService.notifyItemSaved([itemForNotify]);
         }
       } catch (error) {
-        console.error('[ClipboardModule] Failed to handle clipboard change:', error);
+        console.error("[ClipboardModule] Failed to handle clipboard change:", error);
       }
     });
 
@@ -62,43 +61,46 @@ class ClipboardModule extends BaseModule {
 
   registerIpcHandler(ipcMain) {
     // 클립보드 관련 IPC (예: 복사 일시 중지, 수동 추가 등)
-    ipcMain.handle('clipboard-pause', () => this.listener.stop());
-    ipcMain.handle('clipboard-resume', () => this.listener.start());
+    ipcMain.handle("clipboard-pause", () => this.listener.stop());
+    ipcMain.handle("clipboard-resume", () => this.listener.start());
 
-    ipcMain.handle('run-ui-delay-test', async (_, { count = 100, testId } = {}) => {
+    ipcMain.handle("run-ui-delay-test", async (_, { count = 100, testId } = {}) => {
       try {
         const result = await this._runUiDelayTest({ count, testId });
         return { success: true, ...result };
       } catch (error) {
-        console.error('[ClipboardModule] UI delay test failed:', error);
+        console.error("[ClipboardModule] UI delay test failed:", error);
         return { success: false, message: error.message };
       }
     });
   }
 
   async _runUiDelayTest({ count = 100, testId }) {
-    const pngBuffer = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/xcAAn8B9o9n/wAAAABJRU5ErkJggg==',
-      'base64'
-    );
+    // Generate valid 1x1 PNG buffer programmatically using sharp
+    const pngBuffer = await sharp({
+      create: {
+        width: 1,
+        height: 1,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .png()
+      .toBuffer();
 
-    const targetDir = path.join(app.getPath('documents'), 'CCD', 'original');
+    const targetDir = path.join(app.getPath("documents"), "CCD", "original");
     const runId = testId || `ui-delay-${Date.now()}`;
 
     for (let i = 0; i < count; i += 1) {
       const id = `${runId}-${uuidv4()}`;
       const createdAt = Date.now();
 
-      const imageMeta = await this.testImageProcessor.saveClipboardImage(
-        pngBuffer,
-        targetDir,
-        id
-      );
+      const imageMeta = await this.testImageProcessor.saveClipboardImage(pngBuffer, targetDir, id);
 
       const savedItem = await this.service.saveFromListener({
         id,
-        type: 'img',
-        format: 'png',
+        type: "img",
+        format: "png",
         content: imageMeta.file_path,
         created_at: createdAt,
         imageMeta,
