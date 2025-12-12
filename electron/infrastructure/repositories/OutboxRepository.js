@@ -1,110 +1,103 @@
-// infrastructure/repositories/OutboxRepository.js
+// infrastructure/repositories/OutboxRepository.js - PostgreSQL 버전
 class OutboxRepository {
   constructor(db) {
     this.db = db;
   }
 
-  createEvent(dataId, eventType = "UPLOAD", metadata = null) {
-    const stmt = this.db.prepare(`
+  async createEvent(dataId, eventType = "UPLOAD", metadata = null) {
+    const now = Date.now();
+    const result = await this.db.query(
+      `
       INSERT INTO sync_outbox 
       (data_id, event_type, status, created_at, next_attempt_at, metadata)
-      VALUES (?, ?, 'PENDING', ?, ?, ?)
-    `);
-
-    const now = Date.now();
-    return stmt.run(
-      dataId,
-      eventType,
-      now,
-      now,
-      metadata ? JSON.stringify(metadata) : null
+      VALUES ($1, $2, 'PENDING', $3, $4, $5)
+      RETURNING id
+    `,
+      [dataId, eventType, now, now, metadata ? JSON.stringify(metadata) : null]
     );
+    return result.rows[0];
   }
+
   async getPendingItems(limit = 10) {
     const now = Date.now();
-    return this.db
-      .prepare(
-        `
+    const result = await this.db.query(
+      `
       SELECT * FROM sync_outbox 
       WHERE status = 'PENDING' 
-        AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+        AND (next_attempt_at IS NULL OR next_attempt_at <= $1)
       ORDER BY created_at ASC
-      LIMIT ?
-    `
-      )
-      .all(now, limit);
+      LIMIT $2
+    `,
+      [now, limit]
+    );
+    return result.rows;
   }
 
   async markAsProcessing(ids) {
     if (!ids || ids.length === 0) return;
 
-    const placeholders = ids.map(() => "?").join(",");
-    const stmt = this.db.prepare(`
+    const nextAttempt = Date.now() + 10000;
+    await this.db.query(
+      `
       UPDATE sync_outbox 
       SET status = 'PROCESSING',
           retry_count = retry_count + 1,
-          next_attempt_at = ?
-      WHERE id IN (${placeholders})
-    `);
-
-    // 재시도 횟수는 개별적으로 계산해야 정확하지만,
-    // 일괄 처리를 위해 현재 시간 + 기본 백오프로 설정하거나 루프를 돕니다.
-    // 여기서는 간단하게 처리합니다.
-    stmt.run(Date.now() + 10000, ...ids);
+          next_attempt_at = $1
+      WHERE id = ANY($2::integer[])
+    `,
+      [nextAttempt, ids]
+    );
   }
-
   /**
    * 처리 성공 처리
    */
-  markAsCompleted(id) {
-    this.db
-      .prepare(
-        `
+  async markAsCompleted(id) {
+    await this.db.query(
+      `
       UPDATE sync_outbox 
       SET status = 'COMPLETED',
           next_attempt_at = NULL,
-          updated_at = ?
-      WHERE id = ?
-    `
-      )
-      .run(Date.now(), id);
+          updated_at = $1
+      WHERE id = $2
+    `,
+      [Date.now(), id]
+    );
   }
-
   /**
    * 처리 실패 처리 (Backoff 계산 포함)
    */
-  markAsFailed(id, error, retryCount) {
+  async markAsFailed(id, error, retryCount) {
     const nextAttempt = Date.now() + this._calculateBackoff(retryCount);
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    this.db
-      .prepare(
-        `
+    await this.db.query(
+      `
       UPDATE sync_outbox 
-      SET status = 'PENDING',  -- 다시 PENDING으로 돌려야 다음 폴링에 잡힘 (또는 FAILED 후 별도 재시도 로직)
-          error_message = ?,
-          next_attempt_at = ?,
-          updated_at = ?
-      WHERE id = ?
-    `
-      )
-      .run(errorMessage, nextAttempt, Date.now(), id);
+      SET status = 'PENDING',
+          error_message = $1,
+          next_attempt_at = $2,
+          updated_at = $3
+      WHERE id = $4
+    `,
+      [errorMessage, nextAttempt, Date.now(), id]
+    );
   }
 
-  // 영구 실패 처리 (재시도 초과 시)
-  markAsDead(id, error) {
-    this.db
-      .prepare(
-        `
+  /**
+   * 영구 실패 처리 (재시도 초과 시)
+   */
+  async markAsDead(id, error) {
+    await this.db.query(
+      `
       UPDATE sync_outbox 
       SET status = 'FAILED',
-          error_message = ?,
+          error_message = $1,
           next_attempt_at = NULL,
-          updated_at = ?
-      WHERE id = ?
-    `
-      )
-      .run(String(error), Date.now(), id);
+          updated_at = $2
+      WHERE id = $3
+    `,
+      [String(error), Date.now(), id]
+    );
   }
 
   _calculateBackoff(retryCount) {

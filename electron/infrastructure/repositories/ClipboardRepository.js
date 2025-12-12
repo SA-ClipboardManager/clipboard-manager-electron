@@ -1,9 +1,9 @@
 // electron/infrastructure/repositories/ClipboardRepository.js
-const CCDError = require('../../shared/errors/CCDError');
-const fs = require('fs-extra');
-const ImageProcessor = require('../../shared/utility/imageProcessor');
-const IClipboardRepository = require('../../shared/interfaces/IClipboardRepository');
-const crypto = require('crypto');
+const CCDError = require("../../shared/errors/CCDError");
+const fs = require("fs-extra");
+const ImageProcessor = require("../../shared/utility/imageProcessor");
+const IClipboardRepository = require("../../shared/interfaces/IClipboardRepository");
+const crypto = require("crypto");
 
 /**
  * Implementation of IClipboardRepository for managing clipboard items
@@ -21,26 +21,29 @@ class ClipboardRepository {
   /**
    * Get clipboard item by ID
    * @param {string} id
-   * @returns {object|null}
+   * @returns {Promise<object|null>}
    */
-  getById(id) {
+  async getById(id) {
     try {
-      const stmt = this.db.prepare(`
-                SELECT c.*,
-                       im.width,
-                       im.height,
-                       im.file_size,
-                       im.file_path,
-                       im.thumbnail_path
-                FROM clipboard c
-                         LEFT JOIN image_meta im ON c.id = im.data_id
-                WHERE c.id = ?
-            `);
+      const result = await this.db.query(
+        `
+        SELECT c.*,
+               im.width,
+               im.height,
+               im.file_size,
+               im.file_path,
+               im.thumbnail_path
+        FROM clipboard c
+        LEFT JOIN image_meta im ON c.id = im.data_id
+        WHERE c.id = $1
+      `,
+        [id]
+      );
 
-      const row = stmt.get(id);
+      const row = result.rows[0];
       if (!row) return null;
 
-      const tags = this._getTags(id);
+      const tags = await this._getTags(id);
 
       const meta =
         row.width || row.height || row.file_path
@@ -56,9 +59,9 @@ class ClipboardRepository {
 
       return this._mapToDto(row, meta, tags);
     } catch (error) {
-      throw CCDError.create('E610', {
-        module: 'ClipboardRepository',
-        context: 'getById',
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "getById",
         message: error.message,
       });
     }
@@ -67,24 +70,27 @@ class ClipboardRepository {
   /**
    * Get all clipboard items
    * @param {object} [options]
-   * @returns {Array<object>}
+   * @returns {Promise<Array<object>>}
    */
-  getAll(options = {}) {
+  async getAll(options = {}) {
     try {
-      const stmt = this.db.prepare(`
-                SELECT c.*,
-                       im.width,
-                       im.height,
-                       im.file_size,
-                       im.file_path,
-                       im.thumbnail_path
-                FROM clipboard c
-                         LEFT JOIN image_meta im ON c.id = im.data_id
-                ORDER BY c.created_at DESC
-            `);
-      const rows = stmt.all();
-      return rows.map((row) => {
-        const tags = this._getTags(row.id);
+      const result = await this.db.query(`
+        SELECT c.*,
+               im.width,
+               im.height,
+               im.file_size,
+               im.file_path,
+               im.thumbnail_path
+        FROM clipboard c
+        LEFT JOIN image_meta im ON c.id = im.data_id
+        ORDER BY c.created_at DESC
+      `);
+
+      const rows = result.rows;
+      const mappedRows = [];
+
+      for (const row of rows) {
+        const tags = await this._getTags(row.id);
         const meta =
           row.width || row.height || row.file_path
             ? {
@@ -96,12 +102,14 @@ class ClipboardRepository {
                 thumbnail_path: row.thumbnail_path,
               }
             : null;
-        return this._mapToDto(row, meta, tags);
-      });
+        mappedRows.push(this._mapToDto(row, meta, tags));
+      }
+
+      return mappedRows;
     } catch (error) {
-      throw CCDError.create('E610', {
-        module: 'ClipboardRepository',
-        context: 'getAll',
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "getAll",
         message: error.message,
       });
     }
@@ -111,59 +119,66 @@ class ClipboardRepository {
    * Search clipboard items
    * @param {string} query
    * @param {object} filters
-   * @returns {Array<object>}
+   * @returns {Promise<Array<object>>}
    */
-  search(query, filters = {}) {
+  async search(query, filters = {}) {
     try {
-      // Implement search logic here
-      // This is a simplified example
-      const stmt = this.db.prepare(`
-                SELECT *
-                FROM clipboard
-                WHERE content LIKE :query
-                  AND (:isCloud IS NULL or is_cloud_item = :isCloud)
-                ORDER BY created_at DESC
-            `);
-      return stmt.all({
-        isCloud: filters.isCloud ?? null,
-        query: `%${query}%`,
-      });
+      // PostgreSQL FTS 또는 LIKE 검색
+      const queryPattern = `%${query}%`;
+      const result = await this.db.query(
+        `
+        SELECT *
+        FROM clipboard
+        WHERE (content ILIKE $1 OR format ILIKE $1)
+          AND ($2::boolean IS NULL or is_cloud_item = COALESCE($2::integer, is_cloud_item))
+        ORDER BY created_at DESC
+      `,
+        [queryPattern, filters.isCloud ?? null]
+      );
+
+      return result.rows.map((row) => this._mapToDto(row, null, []));
     } catch (error) {
-      throw CCDError.create('E610', {
-        module: 'ClipboardRepository',
-        context: 'search',
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "search",
         message: error.message,
       });
     }
   }
 
   getByIds(ids) {
+    // PostgreSQL 비동기 방식
+    return this._getByIdsAsync(ids);
+  }
+
+  /**
+   * PostgreSQL에서 비동기로 처리하는 방식
+   */
+  async _getByIdsAsync(ids) {
     if (!ids || ids.length === 0) return [];
 
     try {
-      // ids 배열을 SQL 쿼리용 문자열로 변환 (예: ?,?,?)
-      const placeholders = ids.map(() => '?').join(',');
+      // PostgreSQL의 ANY 문법 사용
+      const result = await this.db.query(
+        `
+        SELECT c.*,
+               im.width,
+               im.height,
+               im.file_size,
+               im.file_path,
+               im.thumbnail_path
+        FROM clipboard c
+        LEFT JOIN image_meta im ON c.id = im.data_id
+        WHERE c.id = ANY($1::text[])
+      `,
+        [ids]
+      );
 
-      // WHERE c.id IN (?,?,?) 구문 사용
-      const stmt = this.db.prepare(`
-                SELECT c.*,
-                       im.width,
-                       im.height,
-                       im.file_size,
-                       im.file_path,
-                       im.thumbnail_path
-                FROM clipboard c
-                         LEFT JOIN image_meta im ON c.id = im.data_id
-                WHERE c.id IN (${placeholders})
-            `);
+      const rows = result.rows;
+      const mappedRows = [];
 
-      // 배열을 전개(...)해서 인자로 전달
-      const rows = stmt.all(...ids);
-
-      // 결과 매핑
-      return rows.map((row) => {
-        const tags = this._getTags(row.id); // 태그 가져오기 (N+1이 발생하긴 하지만 태그는 가벼우므로 일단 패스)
-
+      for (const row of rows) {
+        const tags = await this._getTags(row.id);
         const meta =
           row.width || row.height || row.file_path
             ? {
@@ -175,14 +190,14 @@ class ClipboardRepository {
                 thumbnail_path: row.thumbnail_path,
               }
             : null;
+        mappedRows.push(this._mapToDto(row, meta, tags));
+      }
 
-        return this._mapToDto(row, meta, tags);
-      });
+      return mappedRows;
     } catch (error) {
-      throw CCDError.create('E611', {
-        // 에러 코드 구분
-        module: 'ClipboardRepository',
-        context: 'getByIds',
+      throw CCDError.create("E611", {
+        module: "ClipboardRepository",
+        context: "getByIds",
         message: error.message,
       });
     }
@@ -203,45 +218,65 @@ class ClipboardRepository {
     });
 
     const now = Math.floor(Date.now() / 1000);
-    const tx = this.db.transaction(() => {
-      // Save to clipboard table
-      const stmt = this.db.prepare(`
-                INSERT
-                OR REPLACE INTO clipboard 
-        (id, type, format, content, is_synced, is_cloud_item, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-            `);
-      const clipboardResult = stmt.run(item.id, item.type, item.format, item.content, item.is_synced || 0, item.is_cloud_item || 0, item.created_at || now);
-
-      console.log(`[ClipboardRepository] Clipboard insert:`, {
-        changes: clipboardResult.changes,
-      });
-
-      // Save to image_meta if exists
-      if (meta) {
-        const metaStmt = this.db.prepare(`
-                    INSERT
-                    OR REPLACE INTO image_meta 
-          (data_id, width, height, file_size, file_path, thumbnail_path)
-          VALUES (?, ?, ?, ?, ?, ?)
-                `);
-        const metaResult = metaStmt.run(item.id, meta.width, meta.height, meta.file_size, meta.file_path, meta.thumbnail_path);
-
-        console.log(`[ClipboardRepository] Image_meta insert:`, {
-          changes: metaResult.changes,
-          data_id: item.id,
-        });
-      }
-    });
+    const client = await this.db;
 
     try {
-      tx();
-      console.log(`[ClipboardRepository] Transaction completed for ${item.id}`);
+      // PostgreSQL 트랜잭션 시작
+      await client.query("BEGIN");
+
+      try {
+        // Save to clipboard table
+        const clipboardResult = await client.query(
+          `
+          INSERT INTO clipboard (id, type, format, content, is_synced, is_cloud_item, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (id) DO UPDATE SET
+            type = EXCLUDED.type,
+            format = EXCLUDED.format,
+            content = EXCLUDED.content,
+            is_synced = EXCLUDED.is_synced,
+            is_cloud_item = EXCLUDED.is_cloud_item
+        `,
+          [item.id, item.type, item.format, item.content, item.is_synced || 0, item.is_cloud_item || 0, item.created_at || now]
+        );
+
+        console.log(`[ClipboardRepository] Clipboard insert:`, {
+          rowCount: clipboardResult.rowCount,
+        });
+
+        // Save to image_meta if exists
+        if (meta) {
+          const metaResult = await client.query(
+            `
+            INSERT INTO image_meta (data_id, width, height, file_size, file_path, thumbnail_path)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (data_id) DO UPDATE SET
+              width = EXCLUDED.width,
+              height = EXCLUDED.height,
+              file_size = EXCLUDED.file_size,
+              file_path = EXCLUDED.file_path,
+              thumbnail_path = EXCLUDED.thumbnail_path
+          `,
+            [item.id, meta.width, meta.height, meta.file_size, meta.file_path, meta.thumbnail_path]
+          );
+
+          console.log(`[ClipboardRepository] Image_meta insert:`, {
+            rowCount: metaResult.rowCount,
+            data_id: item.id,
+          });
+        }
+
+        await client.query("COMMIT");
+        console.log(`[ClipboardRepository] Transaction completed for ${item.id}`);
+      } catch (transactionError) {
+        await client.query("ROLLBACK");
+        throw transactionError;
+      }
     } catch (error) {
       console.error(`[ClipboardRepository] Transaction failed:`, error);
-      throw CCDError.create('E610', {
-        module: 'ClipboardRepository',
-        context: 'save',
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "save",
         message: error.message,
       });
     }
@@ -255,11 +290,10 @@ class ClipboardRepository {
   async delete(id) {
     try {
       // Delete from database
-      const stmt = this.db.prepare('DELETE FROM clipboard WHERE id = ?');
-      stmt.run(id);
+      await this.db.query("DELETE FROM clipboard WHERE id = $1", [id]);
 
       // Delete associated image files if they exist
-      const meta = this._getImageMeta(id);
+      const meta = await this._getImageMeta(id);
       if (meta && meta.file_path) {
         await fs.remove(meta.file_path).catch(() => {});
       }
@@ -267,9 +301,9 @@ class ClipboardRepository {
         await fs.remove(meta.thumbnail_path).catch(() => {});
       }
     } catch (error) {
-      throw CCDError.create('E630', {
-        module: 'ClipboardRepository',
-        context: 'delete',
+      throw CCDError.create("E630", {
+        module: "ClipboardRepository",
+        context: "delete",
         message: error.message,
       });
     }
@@ -283,50 +317,60 @@ class ClipboardRepository {
    */
   async attachTags(dataId, tagNames) {
     try {
-      const tx = this.db.transaction(() => {
+      const client = await this.db;
+
+      try {
+        await client.query("BEGIN");
+
         // 1. 기존 태그 연결 제거
-        this.db.prepare('DELETE FROM data_tag WHERE data_id = ?').run(dataId);
+        await client.query("DELETE FROM data_tag WHERE data_id = $1", [dataId]);
 
         // 2. 태그 저장 및 연결 (Source는 'user'로 고정 가정)
-        const insertTagStmt = this.db.prepare(`
-                    INSERT
-                    OR IGNORE INTO tag (tag_id, name, source) VALUES (?, ?, 'user')
-                `);
-
-        const getTagIdStmt = this.db.prepare(`
-                    SELECT tag_id
-                    FROM tag
-                    WHERE name = ?
-                      AND source = 'user'
-                `);
-
-        const linkStmt = this.db.prepare(`
-                    INSERT
-                    OR IGNORE INTO data_tag (data_id, tag_id) 
-          VALUES (?, ?)
-                `);
-
         for (const name of tagNames) {
-          // 2-1. 태그가 없으면 생성 (UUID 생성 필요)
-          // INSERT OR IGNORE이므로 이미 있으면 무시됨
+          // 2-1. 태그가 없으면 생성 (UUID 생성)
           const newTagId = crypto.randomUUID();
-          insertTagStmt.run(newTagId, name);
 
-          // 2-2. 태그 ID 조회 (방금 넣은 것 혹은 기존 것)
-          const tagRow = getTagIdStmt.get(name);
+          // INSERT ... ON CONFLICT로 중복 처리
+          await client.query(
+            `
+            INSERT INTO tag (tag_id, name, source) 
+            VALUES ($1, $2, 'user')
+            ON CONFLICT (name, source) DO NOTHING
+          `,
+            [newTagId, name]
+          );
 
+          // 2-2. 태그 ID 조회
+          const tagResult = await client.query(
+            `
+            SELECT tag_id FROM tag WHERE name = $1 AND source = 'user'
+          `,
+            [name]
+          );
+
+          const tagRow = tagResult.rows[0];
           if (tagRow) {
             // 2-3. 연결 테이블에 저장
-            linkStmt.run(dataId, tagRow.tag_id);
+            await client.query(
+              `
+              INSERT INTO data_tag (data_id, tag_id) 
+              VALUES ($1, $2)
+              ON CONFLICT DO NOTHING
+            `,
+              [dataId, tagRow.tag_id]
+            );
           }
         }
-      });
 
-      tx();
+        await client.query("COMMIT");
+      } catch (transactionError) {
+        await client.query("ROLLBACK");
+        throw transactionError;
+      }
     } catch (error) {
-      throw CCDError.create('E640', {
-        module: 'ClipboardRepository',
-        context: 'attachTags',
+      throw CCDError.create("E640", {
+        module: "ClipboardRepository",
+        context: "attachTags",
         message: error.message,
       });
     }
@@ -337,7 +381,7 @@ class ClipboardRepository {
    * @param {string} id
    * @param {object} paths { file_path?: string, thumbnail_path?: string }
    */
-  updateImagePaths(id, { file_path, thumbnail_path }) {
+  async updateImagePaths(id, { file_path, thumbnail_path }) {
     console.log(`[ClipboardRepository] updateImagePaths(${id}):`, {
       file_path,
       thumbnail_path,
@@ -345,14 +389,17 @@ class ClipboardRepository {
 
     const updates = [];
     const params = [];
+    let paramCount = 1;
 
     if (file_path !== undefined) {
-      updates.push('file_path = ?');
+      updates.push(`file_path = $${paramCount}`);
       params.push(file_path);
+      paramCount++;
     }
     if (thumbnail_path !== undefined) {
-      updates.push('thumbnail_path = ?');
+      updates.push(`thumbnail_path = $${paramCount}`);
       params.push(thumbnail_path);
+      paramCount++;
     }
 
     // 업데이트할 내용이 없으면 종료
@@ -363,16 +410,18 @@ class ClipboardRepository {
 
     params.push(id); // WHERE 조건용 id
 
-    const stmt = this.db.prepare(`
-            UPDATE image_meta
-            SET ${updates.join(', ')}
-            WHERE data_id = ?
-        `);
+    const result = await this.db.query(
+      `
+      UPDATE image_meta
+      SET ${updates.join(", ")}
+      WHERE data_id = $${paramCount}
+    `,
+      params
+    );
 
-    const result = stmt.run(...params);
     console.log(`[ClipboardRepository] updateImagePaths result:`, {
-      changes: result.changes,
-      affectedRows: result.changes,
+      rowCount: result.rowCount,
+      affectedRows: result.rowCount,
     });
   }
 
@@ -382,32 +431,37 @@ class ClipboardRepository {
    * Get image metadata
    * @private
    * @param {string} dataId
-   * @returns {object|null}
+   * @returns {Promise<object|null>}
    */
-  _getImageMeta(dataId) {
-    const stmt = this.db.prepare(`
-            SELECT *
-            FROM image_meta
-            WHERE data_id = ?
-        `);
-    return stmt.get(dataId) || null;
+  async _getImageMeta(dataId) {
+    const result = await this.db.query(
+      `
+      SELECT *
+      FROM image_meta
+      WHERE data_id = $1
+    `,
+      [dataId]
+    );
+    return result.rows[0] || null;
   }
 
   /**
    * Get tags for a clipboard item
    * @private
    * @param {string} dataId
-   * @returns {Array<object>}
+   * @returns {Promise<Array<object>>}
    */
-  _getTags(dataId) {
-    // UI에서 태그 관리에 필요한 필드만 반환
-    const stmt = this.db.prepare(`
-            SELECT t.tag_id, t.name, t.source
-            FROM tag t
-            JOIN data_tag dt ON t.tag_id = dt.tag_id
-            WHERE dt.data_id = ?
-        `);
-    return stmt.all(dataId);
+  async _getTags(dataId) {
+    const result = await this.db.query(
+      `
+      SELECT t.tag_id, t.name, t.source
+      FROM tag t
+      JOIN data_tag dt ON t.tag_id = dt.tag_id
+      WHERE dt.data_id = $1
+    `,
+      [dataId]
+    );
+    return result.rows;
   }
 
   /**
@@ -434,38 +488,36 @@ class ClipboardRepository {
   /**
    * Search Service 용
    */
-
-  getAllClipboardWithMetaAndTags() {
+  async getAllClipboardWithMetaAndTags() {
     try {
-      // Aggregate tags and image meta per clipboard item
-      const stmt = this.db.prepare(`
-                SELECT c.id,
-                       c.type,
-                       c.format,
-                       c.content,
-                       c.created_at,
-                       GROUP_CONCAT(t.name) AS tag_names,
-                       im.width,
-                       im.height,
-                       im.file_size,
-                       im.file_path,
-                       im.thumbnail_path
-                FROM clipboard c
-                         LEFT JOIN data_tag dt ON c.id = dt.data_id
-                         LEFT JOIN tag t ON t.tag_id = dt.tag_id
-                         LEFT JOIN image_meta im ON c.id = im.data_id
-                GROUP BY c.id
-                ORDER BY c.created_at DESC
-            `);
+      const result = await this.db.query(`
+        SELECT c.id,
+               c.type,
+               c.format,
+               c.content,
+               c.created_at,
+               STRING_AGG(t.name, ', ') AS tag_names,
+               im.width,
+               im.height,
+               im.file_size,
+               im.file_path,
+               im.thumbnail_path
+        FROM clipboard c
+        LEFT JOIN data_tag dt ON c.id = dt.data_id
+        LEFT JOIN tag t ON t.tag_id = dt.tag_id
+        LEFT JOIN image_meta im ON c.id = im.data_id
+        GROUP BY c.id, im.data_id, im.width, im.height, im.file_size, im.file_path, im.thumbnail_path
+        ORDER BY c.created_at DESC
+      `);
 
-      const rows = stmt.all();
+      const rows = result.rows;
       return rows.map((r) => ({
         id: r.id,
         type: r.type,
         format: r.format,
         content: r.content,
         created_at: r.created_at,
-        tag_names: r.tag_names || '',
+        tag_names: r.tag_names || "",
         image_meta:
           r.width || r.height || r.file_size || r.file_path || r.thumbnail_path
             ? {
@@ -478,9 +530,9 @@ class ClipboardRepository {
             : null,
       }));
     } catch (error) {
-      throw CCDError.create('E610', {
-        module: 'ClipboardRepository',
-        context: 'getAllClipboardWithMetaAndTags',
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "getAllClipboardWithMetaAndTags",
         message: error.message,
       });
     }
@@ -490,19 +542,21 @@ class ClipboardRepository {
    * Mark item as successfully synced to cloud.
    * @param {string} id
    */
-  markAsSynced(id) {
+  async markAsSynced(id) {
     try {
-      const stmt = this.db.prepare(`
-                UPDATE clipboard
-                SET is_synced     = 1,
-                    is_cloud_item = 1
-                WHERE id = ?
-            `);
-      stmt.run(id);
+      await this.db.query(
+        `
+        UPDATE clipboard
+        SET is_synced     = 1,
+            is_cloud_item = 1
+        WHERE id = $1
+      `,
+        [id]
+      );
     } catch (error) {
-      throw CCDError.create('E610', {
-        module: 'ClipboardRepository',
-        context: 'markAsSynced',
+      throw CCDError.create("E610", {
+        module: "ClipboardRepository",
+        context: "markAsSynced",
         message: error.message,
       });
     }
@@ -510,23 +564,21 @@ class ClipboardRepository {
 
   /**
    * Delete all cloud items (called on logout/app exit)
-   * @returns {number} Number of deleted items
+   * @returns {Promise<number>} Number of deleted items
    */
-  deleteAllCloudItems() {
+  async deleteAllCloudItems() {
     try {
-      const stmt = this.db.prepare(`
-                DELETE
-                FROM clipboard
-                WHERE is_cloud_item = 1
-            `);
-      const result = stmt.run();
+      const result = await this.db.query(`
+        DELETE FROM clipboard
+        WHERE is_cloud_item = 1
+      `);
 
-      console.log(`[ClipboardRepository] Deleted ${result.changes} cloud items`);
-      return result.changes;
+      console.log(`[ClipboardRepository] Deleted ${result.rowCount} cloud items`);
+      return result.rowCount;
     } catch (error) {
-      throw CCDError.create('E630', {
-        module: 'ClipboardRepository',
-        context: 'deleteAllCloudItems',
+      throw CCDError.create("E630", {
+        module: "ClipboardRepository",
+        context: "deleteAllCloudItems",
         message: error.message,
       });
     }

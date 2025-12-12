@@ -100,7 +100,7 @@ async function registerCcdProtocol() {
 
 async function createWindow() {
   try {
-    AppContainer.initialize(ipcMain);
+    await AppContainer.initialize(ipcMain); // PostgreSQL 비동기 초기화 필요
   } catch (err) {
     console.error('AppContainer.initialize failed:', err);
     app.quit();
@@ -155,11 +155,11 @@ app.on('activate', () => {
 });
 
 // 앱 종료 시 클라우드 데이터 정리
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   try {
     const clipboardRepository = AppContainer.get('ClipboardRepository');
     if (clipboardRepository) {
-      const deletedCount = clipboardRepository.deleteAllCloudItems();
+      const deletedCount = await clipboardRepository.deleteAllCloudItems(); // PostgreSQL 비동기
       console.log(`[App] Cleaned up ${deletedCount} cloud items on exit`);
     }
   } catch (error) {

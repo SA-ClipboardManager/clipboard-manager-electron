@@ -2,19 +2,13 @@ const DatabaseContext = require("../../infrastructure/database/DatabaseContext")
 const ClipboardRepository = require("../../infrastructure/repositories/ClipboardRepository");
 const OutboxRepository = require("../../infrastructure/repositories/OutboxRepository");
 const TagRepository = require("../../infrastructure/repositories/TagRepository");
-const {
-  TokenStorage,
-} = require("../../modules/authService/token-storage/TokenStorage");
+const { TokenStorage } = require("../../modules/authService/token-storage/TokenStorage");
 const { AuthService } = require("../../modules/authService/AuthService");
-const {
-  ClipboardService,
-} = require("../../modules/clipboard/ClipboardService");
+const { ClipboardService } = require("../../modules/clipboard/ClipboardService");
 const CloudService = require("../../modules/cloud/CloudService");
 const WebSocketManager = require("../../modules/cloud/WebSocketManager");
 const SyncCoordinator = require("../../modules/cloud/SyncCoordinator");
-const {
-  createAuthenticatedHttpClient,
-} = require("../../shared/utility/HttpClient");
+const { createAuthenticatedHttpClient } = require("../../shared/utility/HttpClient");
 // const SearchService = require("../../modules/search/SearchService");
 const NotifyService = require("../../modules/notify/notifyService");
 const SearchService = require("../../modules/search/SearchService");
@@ -27,9 +21,9 @@ class serviceConfig {
     this.services = {};
   }
 
-  initializeInfrastructure() {
+  async initializeInfrastructure() {
     const dbContext = new DatabaseContext();
-    dbContext.initialize();
+    await dbContext.initialize(); // PostgreSQL은 비동기 초기화 필요
     this.infrastructure.dbContext = dbContext;
     console.log("[serviceConfig] Infrastructure initialized.");
   }
@@ -54,9 +48,7 @@ class serviceConfig {
     console.log("[serviceConfig] CLOUD_API_BASE_URL =", apiBaseURL);
     console.log(
       "[serviceConfig] All env keys:",
-      Object.keys(process.env).filter(
-        (k) => k.includes("CLOUD") || k.includes("API")
-      )
+      Object.keys(process.env).filter((k) => k.includes("CLOUD") || k.includes("API"))
     );
 
     // 2. 기초 서비스 생성
@@ -91,11 +83,7 @@ class serviceConfig {
     syncCoordinator.start(); // 동기화 루프 시작
 
     // 6. 부가 서비스 생성 (ClipboardService 의존 가능)
-    const notifyService = new NotifyService(
-      clipboardRepo,
-      clipboardService,
-      cloudService
-    );
+    const notifyService = new NotifyService(clipboardRepo, clipboardService, cloudService);
     const searchService = new SearchService(clipboardRepo, uploadClient); // 인증 & 갱신 포함된 axios 주입 (CloudService.uploadClient 재사용)
 
     // 6. 서비스 등록
@@ -112,9 +100,7 @@ class serviceConfig {
       DatabaseContext: this.infrastructure.dbContext, // CloudModule에서 TaggingSync 생성 시 사용
     };
 
-    console.log(
-      "[serviceConfig] Services initialized & SyncCoordinator started."
-    );
+    console.log("[serviceConfig] Services initialized & SyncCoordinator started.");
   }
 
   getServices() {
