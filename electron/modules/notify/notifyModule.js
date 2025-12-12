@@ -1,7 +1,6 @@
 const BaseModule = require("../../main/core/BaseModule");
 const CCDError = require("../../shared/errors/CCDError");
 
-//TODO name 수정
 class NotifyModule extends BaseModule {
   constructor(services) {
     super(services, "notify");

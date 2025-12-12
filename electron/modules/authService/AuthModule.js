@@ -45,7 +45,6 @@ class AuthModule extends BaseModule {
     ipcMain.handle("user-login", async (_, { userId, password }) => {
       try {
         const tokens = await this.service.login(userId, password);
-        // if (loginResult && access_token) isLogin = true;
 
         // 토큰 저장은 authService 내부 cloudDB 인스턴스에서 처리됨
         if (tokens && tokens.accessToken) {
@@ -72,7 +71,7 @@ class AuthModule extends BaseModule {
 
     ipcMain.handle("user-logout", async () => {
       try {
-        // isLogin = false;
+        // 로그인 상태 변경
         await this.service.logout();
 
         return { success: true, message: "로그아웃 완료" };
