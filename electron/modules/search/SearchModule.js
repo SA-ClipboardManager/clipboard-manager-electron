@@ -21,7 +21,7 @@ class SearchModule extends BaseModule{
                     return err.toJSON();
                 }
                 let resultItems = [];
-                //TODO Cloud에서만 검색 여부 + ui에서 넘겨주는 인자 변경
+        
                 if(model === "local_mobilenet"){
                     console.log("SearchModule_local_mobilenet");
                     resultItems = await this.service.keywordLocalSearch(keyword, {isCloud: 0});
