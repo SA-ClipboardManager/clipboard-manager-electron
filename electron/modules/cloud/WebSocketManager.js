@@ -41,10 +41,8 @@ class WebSocketManager extends EventEmitter {
       this._setupHeartbeat();
     });
 
-    this.ws.on("message", (data) => {
-      console.log(
-        `[WebSocketManager] RAW MESSAGE RECEIVED: ${data.toString()}`
-      );
+    this.ws.on('message', (data) => {
+      console.log(`[WebSocketManager] RAW MESSAGE RECEIVED: ${data.toString()}`);
       try {
         const message = JSON.parse(data.toString());
         this._handleMessage(message);
@@ -167,16 +165,16 @@ class WebSocketManager extends EventEmitter {
         break;
 
       // 새로운 이벤트 형식 (점 구분자)
-      case "crud.item.saved.txt":
-      case "crud.item.saved.img":
-      case "crud.item.deleted":
-      case "crud.item.tags.synced":
+      case 'crud.item.saved.txt':
+      case 'crud.item.saved.img':
+      case 'crud.item.deleted':
+      case 'crud.item.tags.synced':
       // 기존 이벤트 형식 (하위 호환성)
-      case "crud:txtSave_success":
-      case "crud:imgSave_success":
-      case "clip_created":
-      case "clip_synced_tags":
-      case "data_deleted":
+      case 'crud:txtSave_success':
+      case 'crud:imgSave_success':
+      case 'clip_created':
+      case 'clip_synced_tags':
+      case 'data_deleted':
         // 다른 디바이스에서 동기화 발생
         this.emit('sync-notification', message.data);
         break;
@@ -193,7 +191,9 @@ class WebSocketManager extends EventEmitter {
 
       case 'tagging_result':
         // 태깅 결과 수신: 로컬 DB에 반영 이벤트 발생
-        this.emit('tagging-result', {
+        // notification-service에서 변환한 형식:
+        // {type: "tagging_result", event: "service.tagging.success", data_id, user_id, tags, ...}
+        const taggingResult = {
           dataId: message.data_id || message.dataId,
           userId: message.user_id || message.userId,
           tags: (message.tags || []).map((t) => {
@@ -211,7 +211,9 @@ class WebSocketManager extends EventEmitter {
             }
             return t;
           }),
-        });
+        };
+        console.log('[WebSocketManager] tagging_result parsed:', taggingResult);
+        this.emit('tagging-result', taggingResult);
         break;
 
       default:

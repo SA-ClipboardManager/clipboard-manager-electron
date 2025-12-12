@@ -1,0 +1,34 @@
+name: SonarCloud
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 소스 코드 가져오기
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # 2. Node.js 세팅 (Gradle 대신 이거!)
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 22
+
+      # 3. 의존성 설치 (npm 사용)
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. SonarCloud 스캔 (Gradle 플러그인 대신 액션 사용)
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

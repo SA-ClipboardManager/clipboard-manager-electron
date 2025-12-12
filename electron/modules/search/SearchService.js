@@ -173,7 +173,7 @@ class SearchService {
     }
      */
 
-  //TODO api 호출 방법에 따라 수정
+
   async vectorCloudSearch(query, topK = 10) {
     try {
       // Embedding-Service 게이트웨이 경로
@@ -230,7 +230,7 @@ class SearchService {
       const [localRaw, cloudRaw] = await Promise.all([
         this.getLocalPreviewDataOnly(),
         // this.getCloudPreviewDataOnly(),
-        Promise.resolve([]), //TODO 임시 주석 처리
+        Promise.resolve([]),
       ]);
 
       const merged = this.mergeItems(localRaw, cloudRaw);

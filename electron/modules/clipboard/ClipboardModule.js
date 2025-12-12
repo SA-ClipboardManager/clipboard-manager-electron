@@ -40,7 +40,6 @@ class ClipboardModule extends BaseModule {
         // EtcService가 있으면 렌더러에 변경사항(증분)을 알림
         if (this.services && this.services.NotifyService && savedItem) {
           // notifyItemSaved은 배열을 받는 것으로 되어 있으므로 배열로 전달
-            //TODO EventEmitter로 변경
           this.services.NotifyService.notifyItemSaved([savedItem]);
         }
       } catch (error) {

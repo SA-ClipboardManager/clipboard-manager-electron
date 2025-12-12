@@ -4,7 +4,7 @@ import '../../styles/color.css';
 import uploadUrl from '../../../assets/UploadCloud.svg';
 import downloadUrl from '../../../assets/DownloadCloud.svg';
 
-import { uploadSelectedItems, downloadSelectedItems } from '../../utils/electronService';
+import { uploadSelectedItems, downloadSelectedItems, onUploadSuccess, offUploadSuccess, onUploadFailed, offUploadFailed } from '../../utils/electronService';
 
 const Toast = ({ message, type }) => {
   const textColor = type === 'error' ? 'text-red-700' : 'text-blue-700';
@@ -43,13 +43,55 @@ const Toast = ({ message, type }) => {
 const BottomBar = ({ getSelectedItemIds, refetch, setItems, loginInfo }) => {
   const [toasts, setToasts] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [uploadToastId, setUploadToastId] = useState(null);
+  const uploadToastIdRef = useRef(null);
 
-  const showToast = (message, type) => {
+  const removeToast = (id) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  };
+
+  // 업로드 완료/실패 이벤트를 구독해 실제 완료 시점에 토스트 표시
+  useEffect(() => {
+    const handleSuccess = () => {
+      const toastId = uploadToastIdRef.current;
+      if (toastId) {
+        removeToast(toastId);
+        uploadToastIdRef.current = null;
+        setUploadToastId(null);
+      }
+      showToast('업로드 성공!', 'info');
+    };
+
+    const handleFailed = (data) => {
+      const toastId = uploadToastIdRef.current;
+      if (toastId) {
+        removeToast(toastId);
+        uploadToastIdRef.current = null;
+        setUploadToastId(null);
+      }
+      showToast(`업로드 실패: ${data?.error || ''}`.trim(), 'error');
+    };
+
+    onUploadSuccess?.(handleSuccess);
+    onUploadFailed?.(handleFailed);
+
+    return () => {
+      offUploadSuccess?.(handleSuccess);
+      offUploadFailed?.(handleFailed);
+    };
+  }, []);
+
+  const showToast = (message, type, durationMs = 2000) => {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((toast) => toast.id !== id));
-    }, 1000);
+
+    if (durationMs && durationMs > 0) {
+      setTimeout(() => {
+        removeToast(id);
+      }, durationMs);
+    }
+
+    return id;
   };
 
   return (
@@ -75,19 +117,28 @@ const BottomBar = ({ getSelectedItemIds, refetch, setItems, loginInfo }) => {
               return;
             }
 
-            showToast('업로드 중...', 'info');
+            const toastId = showToast('업로드 중...', 'info', null); // 완료/실패 시까지 유지
+            setUploadToastId(toastId);
+            uploadToastIdRef.current = toastId;
             try {
               const result = await uploadSelectedItems(selectedIds);
               console.log('결과: ', result);
-              if (result.successCount > 0) {
-                showToast('업로드 성공', 'info');
-                console.log('성공!');
-              } else {
-                showToast('업로드 실패', 'error');
-                console.log('실패!');
+
+              // IPC 호출 자체가 실패한 경우만 즉시 실패 처리
+              if (!result?.success) {
+                // 요청 자체 실패면 진행 토스트를 대체
+                removeToast(toastId);
+                setUploadToastId(null);
+                uploadToastIdRef.current = null;
+                showToast(result?.message || '업로드 요청 실패', 'error');
               }
+              // 성공 시 토스트는 업로드 완료 이벤트에서 처리됨
             } catch (err) {
               console.error('업로드 중 오류:', err);
+              // 진행 토스트 제거 후 오류 표기
+              removeToast(toastId);
+              setUploadToastId(null);
+              uploadToastIdRef.current = null;
               showToast('오류 발생', 'error');
             }
           }}
@@ -97,7 +148,7 @@ const BottomBar = ({ getSelectedItemIds, refetch, setItems, loginInfo }) => {
             alt="Upload"
             className="w-[3.2rem] h-[3.2rem] mb-1"
           />
-          <span className="text-xs underline">Upload</span>
+          <span className="text-xs underline"></span>
         </div>
 
         <div
@@ -130,14 +181,7 @@ const BottomBar = ({ getSelectedItemIds, refetch, setItems, loginInfo }) => {
               showToast('오류 발생', 'error');
             }
           }}
-        >
-          <img
-            src={downloadUrl}
-            alt="Download"
-            className="w-[3.2rem] h-[3.2rem] mb-1"
-          />
-          <span className="text-xs underline">Download</span>
-        </div>
+        ></div>
       </div>
       <div className="absolute top-[48rem] flex flex-col items-end z-50">
         {toasts.map((toast) => (
