@@ -11,6 +11,7 @@ class CloudService extends EventEmitter {
    * @param {object} services
    * @param {import('../../infrastructure/repositories/OutboxRepository')} services.outboxRepo
    * @param {import('../../infrastructure/repositories/ClipboardRepository')} services.clipboardRepo
+   * @param {import('../../infrastructure/repositories/TagRepository')} services.tagRepo
    * @param {import('./WebSocketManager')} services.wsManager
    * @param {import('../auth/AuthService')} services.authService
    * @param {import('axios').AxiosInstance} services.uploadClient
@@ -19,6 +20,7 @@ class CloudService extends EventEmitter {
   constructor({
     outboxRepo,
     clipboardRepo,
+    tagRepo,
     wsManager,
     authService,
     uploadClient,
@@ -27,6 +29,7 @@ class CloudService extends EventEmitter {
     super();
     this.outboxRepo = outboxRepo;
     this.clipboardRepo = clipboardRepo;
+    this.tagRepo = tagRepo;
     this.wsManager = wsManager;
     this.authService = authService;
     this.uploadClient = uploadClient;
@@ -508,6 +511,68 @@ class CloudService extends EventEmitter {
 
     // 로컬 DB 저장 (Outbox 이벤트 생성 안 함)
     await this.clipboardRepo.save(item, meta);
+
+    // 태그 정보 가져오기 및 저장
+    if (item.type === "img") {
+      try {
+        const tags = await this._fetchTags(item.id, correlationId);
+        if (tags && tags.length > 0) {
+          const tagNames = tags.map((t) => t.label);
+          await this.tagRepo.saveTaggingResult(item.id, tagNames);
+          console.log(
+            CorrelationId.formatLog(
+              correlationId,
+              `Saved tags for ${item.id}: ${tagNames.join(", ")}`
+            )
+          );
+          this.emit("tags-updated", { itemId: item.id, tags: tagNames });
+        }
+      } catch (e) {
+        console.warn(
+          CorrelationId.formatLog(
+            correlationId,
+            `Failed to fetch/save tags for ${item.id}: ${e.message}`
+          )
+        );
+      }
+    }
+  }
+
+  /**
+   * 태그 정보 조회
+   */
+  async _fetchTags(itemId, correlationId) {
+    try {
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Fetching tags for item ${itemId} from /api/v1/tags/${itemId}`
+        )
+      );
+      const response = await this.uploadClient.get(`/api/v1/tags/${itemId}`, {
+        headers: {
+          [CorrelationId.HEADER_NAME]: correlationId,
+        },
+      });
+      console.log(
+        CorrelationId.formatLog(
+          correlationId,
+          `Tags fetched for ${itemId}: ${JSON.stringify(response.data)}`
+        )
+      );
+      return response.data;
+    } catch (error) {
+      console.warn(
+        CorrelationId.formatLog(
+          correlationId,
+          `Error fetching tags for ${itemId}: ${error.message}`
+        )
+      );
+      if (error.response && error.response.status === 404) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   /**

@@ -22,6 +22,9 @@ class CloudModule extends BaseModule {
 
     // Forward SyncCoordinator events to renderer
     this._setupSyncEventForwarding();
+
+    // Forward Tagging events to renderer
+    this._setupTaggingEventForwarding();
   }
 
   _transformItemPaths(item) {
@@ -237,6 +240,12 @@ class CloudModule extends BaseModule {
   async onUnload() {
     // Cleanup resources
     this.cloudService.wsManager.disconnect();
+  }
+  _setupTaggingEventForwarding() {
+    this.cloudService.on("tags-updated", ({ itemId, tags }) => {
+      console.log(`[CloudModule] Tags updated for ${itemId}:`, tags);
+      this._sendToRenderer("tagging-result", { dataId: itemId, tags });
+    });
   }
 }
 

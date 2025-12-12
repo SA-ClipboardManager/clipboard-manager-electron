@@ -1,6 +1,7 @@
 const DatabaseContext = require("../../infrastructure/database/DatabaseContext");
 const ClipboardRepository = require("../../infrastructure/repositories/ClipboardRepository");
 const OutboxRepository = require("../../infrastructure/repositories/OutboxRepository");
+const TagRepository = require("../../infrastructure/repositories/TagRepository");
 const {
   TokenStorage,
 } = require("../../modules/authService/token-storage/TokenStorage");
@@ -39,13 +40,14 @@ class serviceConfig {
     this.repositories.outboxRepo = new OutboxRepository(dbContext.getDb());
 
     this.repositories.clipboardRepo = new ClipboardRepository(dbContext);
+    this.repositories.tagRepo = new TagRepository(dbContext);
 
     console.log("[serviceConfig] Repositories initialized.");
   }
 
   initializeServices() {
     // 1. 필요한 리포지토리 및 환경변수 준비
-    const { clipboardRepo, outboxRepo } = this.repositories; // outboxRepo 꺼내기
+    const { clipboardRepo, outboxRepo, tagRepo } = this.repositories; // outboxRepo 꺼내기
     const apiBaseURL = process.env.CLOUD_API_BASE_URL;
 
     console.log("[serviceConfig] Environment variables:");
@@ -71,6 +73,7 @@ class serviceConfig {
     const cloudService = new CloudService({
       outboxRepo,
       clipboardRepo,
+      tagRepo,
       wsManager: webSocketManager,
       authService,
       uploadClient,

@@ -5,6 +5,8 @@
  *   - tag(local_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, source TEXT)
  *   - data_tag(id INTEGER PRIMARY KEY AUTOINCREMENT, data_id TEXT, tag_id INTEGER)
  */
+const crypto = require('crypto');
+
 class TagRepository {
   constructor(dbContext) {
     if (!dbContext || !dbContext.getDb) {
@@ -17,7 +19,7 @@ class TagRepository {
     const existing = this.db.prepare('SELECT tag_id FROM tag WHERE name = ? AND source = ?').get(name, source);
     if (existing) return existing.tag_id;
 
-    const newId = require('crypto').randomUUID();
+    const newId = crypto.randomUUID();
     try {
       this.db.prepare('INSERT INTO tag(tag_id, name, source) VALUES(?, ?, ?)').run(newId, name, source);
       return newId;
@@ -42,6 +44,7 @@ class TagRepository {
   }
 
   saveTaggingResult(dataId, tags) {
+    console.log(`[TagRepository] saveTaggingResult called for ${dataId} with tags:`, tags);
     for (const t of tags) {
       let name;
       let source = 'auto';

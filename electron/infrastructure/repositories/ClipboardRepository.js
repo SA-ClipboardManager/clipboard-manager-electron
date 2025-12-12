@@ -290,11 +290,11 @@ class ClipboardRepository {
         // 2. 태그 저장 및 연결 (Source는 'user'로 고정 가정)
         const insertTagStmt = this.db.prepare(`
                     INSERT
-                    OR IGNORE INTO tag (local_id, name, source) VALUES (?, ?, 'user')
+                    OR IGNORE INTO tag (tag_id, name, source) VALUES (?, ?, 'user')
                 `);
 
         const getTagIdStmt = this.db.prepare(`
-                    SELECT local_id
+                    SELECT tag_id
                     FROM tag
                     WHERE name = ?
                       AND source = 'user'
@@ -317,7 +317,7 @@ class ClipboardRepository {
 
           if (tagRow) {
             // 2-3. 연결 테이블에 저장
-            linkStmt.run(dataId, tagRow.local_id);
+            linkStmt.run(dataId, tagRow.tag_id);
           }
         }
       });
