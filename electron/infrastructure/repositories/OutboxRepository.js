@@ -1,4 +1,9 @@
 // infrastructure/repositories/OutboxRepository.js
+
+/**
+ * Implementation of IOutboxRepository for managing sync outbox events
+ * @implements {IOutboxRepository}
+ */
 class OutboxRepository {
   constructor(db) {
     this.db = db;

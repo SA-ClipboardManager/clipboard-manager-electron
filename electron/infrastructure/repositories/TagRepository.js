@@ -4,6 +4,7 @@
  * - 테이블:
  *   - tag(local_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, source TEXT)
  *   - data_tag(id INTEGER PRIMARY KEY AUTOINCREMENT, data_id TEXT, tag_id INTEGER)
+ * @implements {ITagRepository}
  */
 const crypto = require('crypto');
 
