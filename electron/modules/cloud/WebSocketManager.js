@@ -154,8 +154,9 @@ class WebSocketManager extends EventEmitter {
     console.log(`[WebSocketManager] Received (correlationId: ${correlationId}):`, message);
 
     // 서버는 'event' 필드를 사용하지만, 클라이언트는 'type'을 기대
-    // event -> type으로 매핑
-    const messageType = message.type || message.event;
+    // event -> type으로 매핑하고 'service.' 접두어를 제거하여 하위 호환 유지
+    const rawType = message.type || message.event;
+    const messageType = rawType ? rawType.replace(/^service\./, '') : rawType;
 
     console.log(CorrelationId.formatLog(correlationId, `Received WS message: ${messageType}`));
 

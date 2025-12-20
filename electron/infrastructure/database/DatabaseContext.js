@@ -6,8 +6,14 @@ const fs = require('fs-extra');
 const CCDError = require('../../shared/errors/CCDError');
 
 class DatabaseContext {
+  static instance = null;
+
   constructor() {
-    // 환경변수로 인스턴스 ID 설정 가능 (다중 인스턴스 테스트용)
+    // 생성자가 호출될 때, 이미 인스턴스가 있다면 그것을 반환
+    if (DatabaseContext.instance) {
+      return DatabaseContext.instance;
+    }
+
     const instanceId = process.env.ELECTRON_INSTANCE_ID || 'default';
     const dbFileName = instanceId === 'default' ? 'clipboard-manager.db' : `clipboard-manager-${instanceId}.db`;
 
@@ -15,25 +21,34 @@ class DatabaseContext {
     this.db = null;
 
     console.log(`[DatabaseContext] Instance: ${instanceId}, DB: ${this.dbPath}`);
+
+    DatabaseContext.instance = this;
+  }
+
+  static getInstance() {
+    if (!DatabaseContext.instance) {
+      DatabaseContext.instance = new DatabaseContext();
+    }
+    return DatabaseContext.instance;
   }
 
   /**
    * 데이터베이스 연결 및 초기화 (테이블, 인덱스, FTS 생성)
-   * 앱 시작 시점에 한 번만 호출되어야 합니다.
+   * 앱 시작 시점에 한 번만 호출
    */
   initialize() {
     try {
-      // 1. DB 폴더 확보
+      // DB 폴더 확보
       fs.ensureDirSync(path.dirname(this.dbPath));
 
-      // 2. DB 연결 (better-sqlite3는 동기식)
-      this.db = new Database(this.dbPath); // 필요 시 { verbose: console.log } 옵션 추가
+      // DB 연결
+      this.db = new Database(this.dbPath); 
 
-      // 3. 필수 Pragma 설정
+      // 필수 Pragma 설정
       this.db.pragma('foreign_keys = ON');
-      this.db.pragma('journal_mode = WAL'); // 성능 향상을 위해 WAL 모드 추천
+      this.db.pragma('journal_mode = WAL'); 
 
-      // 4. 스키마 생성
+      // 스키마 생성
       this._createTables();
       this._createIndexes();
       this._setupFTS();
